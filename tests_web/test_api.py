@@ -254,6 +254,20 @@ def test_approve_and_diff(api, synthetic, variant):
     assert same["changes"] == [] and same["moved"] == 0
 
 
+def test_changes_are_logged_with_token_name(api, synthetic):
+    from django.contrib.admin.models import LogEntry
+
+    sem = synthetic[0]
+    t = m.Teacher.objects.filter(items__semester=sem).first()
+    jpatch(api, f"{API}/semesters/{sem.pk}/teachers/{t.pk}/prefs", {"set": {"5-4": -2}})
+    run = jpost(api, f"{API}/semesters/{sem.pk}/runs", {"time_limit_s": 10}).json()
+    jpost(api, f"{API}/runs/{run['id']}/cancel")
+    msgs = [e.change_message for e in LogEntry.objects.order_by("pk")]
+    assert msgs[0].startswith("Пожелания 5-4: -2 — через API, токен «тест»")
+    assert "Расчёт поставлен в очередь" in msgs[1] and "Остановка расчёта" in msgs[2]
+    assert all(e.user.email == "disp@college.example" for e in LogEntry.objects.all())
+
+
 def test_docs_require_staff(dispatcher):
     assert Client().get(f"{API}/docs").status_code == 302  # на вход в админку
     c = Client()

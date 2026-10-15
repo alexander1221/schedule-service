@@ -157,8 +157,8 @@ class ApiToken(models.Model):
         return tok, raw
 
     @classmethod
-    def authenticate(cls, raw: str) -> Any | None:
-        """Открытый токен → пользователь (или None). Отметку «использован» пишем не чаще раза в минуту."""
+    def lookup(cls, raw: str) -> ApiToken | None:
+        """Открытый токен → действующий токен (или None). Отметку «использован» — не чаще раза в минуту."""
         if not raw.startswith(cls.PREFIX):
             return None
         tok = cls.objects.select_related("user").filter(key_hash=_token_hash(raw)).first()
@@ -167,4 +167,10 @@ class ApiToken(models.Model):
         now = timezone.now()
         if tok.last_used_at is None or now - tok.last_used_at > dt.timedelta(minutes=1):
             cls.objects.filter(pk=tok.pk).update(last_used_at=now)
-        return tok.user
+        return tok
+
+    @classmethod
+    def authenticate(cls, raw: str) -> Any | None:
+        """Открытый токен → пользователь (или None)."""
+        tok = cls.lookup(raw)
+        return tok.user if tok else None

@@ -42,6 +42,25 @@ jobs:
           python manage.py migrate --noinput
           python verify_install.py
 
+  # MCP-сервер агента диспетчера на обеих версиях библиотеки mcp (код один — mcp_server/compat.py)
+  mcp:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        sdk: [v1, v2]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install mcp (${{ matrix.sdk }}, locked, hashes)
+        run: python -m pip install --require-hashes -r requirements-mcp-${{ matrix.sdk }}-lock.txt
+      - run: python -m pip install pytest==9.1.1
+      - name: MCP protocol over stdio
+        run: python -m pytest -q tests_mcp -p no:cacheprovider
+
   postgres:
     runs-on: ubuntu-latest
     services:

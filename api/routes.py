@@ -7,6 +7,7 @@
 
 import copy
 
+from django.contrib.admin.models import ADDITION, DELETION
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, Q
@@ -29,7 +30,7 @@ from timetable.services.runs import RunConflict, enqueue, request_cancel
 from timetable.services.variants import ApproveError, approve_variant, default_preset, load_variant
 
 from . import schemas as s
-from .auth import StaffSession, TokenAuth, require
+from .auth import StaffSession, TokenAuth, log_change, require
 
 api = NinjaAPI(
     title="Расписание: API",
@@ -202,6 +203,8 @@ def teacher_prefs_patch(request: HttpRequest, sem_id: int, teacher_id: int, body
                 prefs.pop(k, None)
         av.prefs = prefs
         av.save(update_fields=["prefs"])
+        changes = [f"{k}: {v:+d}" for k, v in body.set.items()] + [f"{k}: сброс" for k in body.reset]
+        log_change(request, av, "Пожелания " + ", ".join(changes))
     return _prefs_out(sem, t, av)
 
 
@@ -266,13 +269,16 @@ def pin_create(request: HttpRequest, sem_id: int, body: s.PinIn):  # type: ignor
             pin = m.Pin.objects.create(item=item, week=body.week, day=body.day, pair=body.pair, room=room)
     except IntegrityError as e:
         raise HttpError(409, "Такое закрепление уже есть") from e
+    log_change(request, pin, "Закрепление добавлено", ADDITION)
     return Status(201, _pin_out(pin))
 
 
 @api.delete("/pins/{pin_id}", response={204: None}, summary="Снять закрепление")
 def pin_delete(request: HttpRequest, pin_id: int):  # type: ignore[no-untyped-def]
     require(request, "timetable.delete_pin")
-    get_object_or_404(m.Pin, pk=pin_id).delete()
+    pin = get_object_or_404(m.Pin, pk=pin_id)
+    log_change(request, pin, f"Закрепление снято: {pin}", DELETION)
+    pin.delete()
     return Status(204, None)
 
 
@@ -337,6 +343,7 @@ def run_create(request: HttpRequest, sem_id: int, body: s.RunIn):  # type: ignor
         )
     except RunConflict as e:
         return Status(409, s.Conflict(detail=str(e), active_run_id=e.active.pk if e.active else None))
+    log_change(request, run, "Расчёт поставлен в очередь", ADDITION)
     return Status(201, _run_out(run))
 
 
@@ -350,6 +357,7 @@ def run_detail(request: HttpRequest, run_id: int, log: bool = False) -> s.RunOut
 def run_cancel(request: HttpRequest, run_id: int) -> s.RunOut:
     require(request, "timetable.change_solverun")
     run = request_cancel(get_object_or_404(m.SolveRun, pk=run_id))
+    log_change(request, run, "Остановка расчёта")
     return _run_out(run)
 
 
@@ -399,6 +407,7 @@ def variant_approve(request: HttpRequest, variant_id: int):  # type: ignore[no-u
         approve_variant(v)
     except ApproveError as e:
         raise HttpError(400, str(e)) from e
+    log_change(request, v, "Вариант утверждён")
     return s.VariantOut(**_variant_out(v))
 
 

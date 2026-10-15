@@ -1,0 +1,14 @@
+# MCP-сервер агента диспетчера (mcp_server/, этап 5б) — ставится на компьютер диспетчера отдельно от
+# сайта. Самому сайту и серверу колледжа эти пакеты не нужны. Подробно — docs/MCP.md.
+#
+# Код работает с обеими версиями библиотеки mcp: всё, что их различает, — в mcp_server/compat.py.
+# Ставить по lock-файлу (точные версии + SHA256), одному из двух:
+#   pip install --require-hashes -r requirements-mcp-v1-lock.txt   # mcp 1.30.0 — текущая первая версия
+#   pip install --require-hashes -r requirements-mcp-v2-lock.txt   # mcp 2.3.0  — вторая версия
+# Переход v1 → v2 — установить другой lock-файл; код и настройки агента не меняются.
+#
+# verified 2026-10-15 via PyPI JSON API: mcp 1.30.0 (2026-09-07) — последняя 1.x; mcp 2.3.0 (2026-10-02),
+# requires_python >= 3.10. Пересборка lock-файлов:
+#   echo "mcp==1.30.0" | uv pip compile - --generate-hashes --python-version 3.12 --universal -o requirements-mcp-v1-lock.txt
+#   echo "mcp==2.3.0"  | uv pip compile - --generate-hashes --python-version 3.12 --universal -o requirements-mcp-v2-lock.txt
+mcp>=1.30,<3
