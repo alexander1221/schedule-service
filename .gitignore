@@ -1,0 +1,44 @@
+# --- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# --- инструменты
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- окружение (пишется setup.sh / setup.ps1 — снимок конкретной машины)
+requirements-frozen.txt
+
+# --- данные и результаты проекта
+# data/: задачи. Реальные выгрузки содержат персональные данные сотрудников (152-ФЗ) — в git не класть.
+data/
+# output/: расписания, отчёты валидатора, бенчмарки — пересоздаются командами CLI.
+output/
+# Django
+staticfiles/
+media/
+*.sqlite3
+
+# офлайн-установка
+wheels/
+*.tar.xz
+
+# --- ОС и редакторы
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# локальные настройки и секреты (почта, ключ)
+.env
+backups/
+staticfiles/

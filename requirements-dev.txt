@@ -1,0 +1,13 @@
+# Инструменты разработки и проверки качества (CI, тесты, линтеры).
+# Полный lock с хэшами: requirements-dev-lock.txt (включает и основной набор).
+# verified 2026-10-13 via PyPI JSON API.
+-r requirements.txt
+
+# pytest 9.1.1 — требует Python >= 3.10.
+pytest==9.1.1
+# pytest-django 4.14.0 — тестовая БД и фикстуры Django для tests_web/.
+pytest-django==4.14.0
+# ruff 0.17.0 — линтер и форматтер.
+ruff==0.17.0
+# mypy 2.4.0 — проверка типов ядра (scheduler/); Django-часть без django-stubs.
+mypy==2.4.0

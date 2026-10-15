@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_semester_changelist' %}">Семестры</a> › <a href="{% url 'admin:timetable_semester_change' semester.pk %}">{{ semester }}</a> › Проверка</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if build_error %}<ul class="messagelist"><li class="error">{{ build_error }}</li></ul>{% endif %}
+{% if stats %}
+<table><tbody>{% for k, v in stats.items %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</tbody></table>
+{% endif %}
+<h2>Ошибки — решения точно нет ({{ errors|length }})</h2>
+{% if errors %}<ul class="messagelist">{% for f in errors %}<li class="error">{{ f.message }}</li>{% endfor %}</ul>
+{% else %}<p>Нет. Быстрые проверки не нашли противоречий (полная проверка — запуск решателя).</p>{% endif %}
+<h2>Предупреждения ({{ warnings|length }})</h2>
+{% if warnings %}<ul class="messagelist">{% for f in warnings %}<li class="warning">{{ f.message }}</li>{% endfor %}</ul>{% else %}<p>Нет.</p>{% endif %}
+<h2>Подсказки ({{ hints|length }})</h2>
+{% if hints %}<ul>{% for f in hints %}<li>{{ f.message }}</li>{% endfor %}</ul>
+<p>Отфильтровать такие элементы: <a href="{% url 'admin:timetable_workloaditem_changelist' %}?semester__id__exact={{ semester.pk }}&hint=alt">кандидаты «через неделю»</a> ·
+<a href="{% url 'admin:timetable_workloaditem_changelist' %}?semester__id__exact={{ semester.pk }}&hint=booking">кандидаты на бронь аудитории</a> ·
+<a href="{% url 'admin:timetable_workloaditem_changelist' %}?semester__id__exact={{ semester.pk }}&hint=stream">кандидаты на поток</a> — и применить действие к выбранным.</p>
+{% else %}<p>Нет.</p>{% endif %}
+<h2>Ставятся вручную (элективы, кружки)</h2>
+<p>Закреплены полностью и учитываются решателем: <b>{{ manual_fixed }}</b>.</p>
+{% if manual_skipped %}<p>Решатель пропустит — закреплены не все пары ({{ manual_skipped|length }}):</p>
+<ul>{% for it in manual_skipped %}<li><a href="{% url 'admin:timetable_workloaditem_change' it.pk %}">{{ it }}</a></li>{% endfor %}</ul>{% endif %}
+<h2>Полнота данных</h2>
+<ul>
+<li>Элементов нагрузки без преподавателя: <b>{{ no_teachers }}</b></li>
+<li>Преподавателей с нагрузкой, но без сетки доступности на семестр: <b>{{ no_avail }}</b> (для них все слоты — «всё равно»)</li>
+</ul>
+<p><a class="button" href="{% url 'admin:timetable_workloaditem_changelist' %}?semester__id__exact={{ semester.pk }}">К нагрузке семестра</a></p>
+{% endblock %}

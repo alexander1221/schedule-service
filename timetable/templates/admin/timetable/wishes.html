@@ -1,0 +1,22 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_semester_changelist' %}">Семестры</a> › <a href="{% url 'admin:timetable_semester_change' semester.pk %}">{{ semester }}</a> › Пожелания</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>Преподавателей с нагрузкой в семестре: <b>{{ stats.total }}</b>.
+   Без почты: <b>{{ stats.no_email }}</b> · могут войти: <b>{{ stats.allowed }}</b> ·
+   уже входили: <b>{{ stats.entered }}</b> · сдали пожелания: <b>{{ stats.submitted }}</b>.
+   {% if semester.availability_deadline %}Срок сдачи: <b>{{ semester.availability_deadline|date:"j E Y" }}</b>.{% else %}Срок сдачи не задан — укажите его в карточке семестра.{% endif %}</p>
+<p>Ссылка для преподавателей: <code>{{ request.scheme }}://{{ request.get_host }}{% url 'login' %}</code>.
+   Чтобы разрешить вход, отметьте преподавателей в <a href="{% url 'admin:timetable_teacher_changelist' %}">списке</a> и выберите действие «Разрешить вход по почте».</p>
+<table>
+<thead><tr><th>Преподаватель</th><th>Почта</th><th>Может войти</th><th>Входил</th><th>Сдал пожелания</th></tr></thead>
+<tbody>
+{% for r in rows %}<tr>
+  <td><a href="{% url 'admin:timetable_teacher_change' r.teacher.pk %}">{{ r.teacher.name }}</a></td>
+  <td>{{ r.email|default:"— впишите почту" }}</td>
+  <td>{% if r.allowed %}да{% elif r.email %}нет{% else %}—{% endif %}</td>
+  <td>{% if r.user %}да{% else %}нет{% endif %}</td>
+  <td>{% if r.submitted %}{{ r.submitted|date:"j E, H:i" }}{% else %}<b>нет</b>{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table>
+{% endblock %}

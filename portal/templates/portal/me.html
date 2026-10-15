@@ -1,0 +1,80 @@
+{% extends "portal/base.html" %}
+{% block title %}Мои пожелания — Расписание{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ teacher.name }}</h1>
+  {% if not semesters %}<p class="muted">Семестров для заполнения пока нет.</p>{% else %}
+  {% if semesters|length > 1 %}
+  <form method="get"><label for="semester">Семестр</label>
+    <select id="semester" name="semester" onchange="this.form.submit()">
+      {% for s in semesters %}<option value="{{ s.pk }}"{% if s.pk == sem.pk %} selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select><noscript> <button>Показать</button></noscript></form>
+  {% else %}<p class="muted">{{ sem.name }}</p>{% endif %}
+  {% endif %}
+</div>
+
+{% if sem %}
+<div class="card">
+  <h2>Когда вам удобно вести занятия</h2>
+  {% if editable %}
+    <p>Для каждой пары выберите: <b>−2</b> — не могу совсем, <b>−1</b> — нежелательно, <b>0</b> — всё равно,
+       <b>+1</b> — удобно, <b>+2</b> — очень хочу. «Не могу» расписание не нарушит; остальное — учтём по возможности.</p>
+    {% if sem.availability_deadline %}<p class="muted">Можно менять до {{ sem.availability_deadline|date:"j E Y" }} включительно.</p>{% endif %}
+  {% else %}
+    <p class="msg warning">Срок сдачи пожеланий прошёл ({{ sem.availability_deadline|date:"j E Y" }}). Изменения — через диспетчера.</p>
+  {% endif %}
+  {% if av.submitted_at %}<p class="muted">Последнее сохранение: {{ av.submitted_at|date:"j E, H:i" }}</p>
+  {% else %}<p class="muted">Вы ещё не сохраняли пожелания на этот семестр.</p>{% endif %}
+  <form method="post">{% csrf_token %}
+    <div class="scroll">{{ grid_html }}</div>
+    <div class="chips">{% for label, color, n in counts %}{% if n %}<span style="background:{{ color }}">{{ label }}: {{ n }}</span>{% endif %}{% endfor %}</div>
+    {% if editable %}<p><button type="submit">Сохранить</button></p>{% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <h2>Ваша нагрузка в семестре</h2>
+  {% if items %}
+  <div class="scroll"><table class="list">
+    <thead><tr><th>Дисциплина</th><th>Группы</th><th>Сколько</th><th></th></tr></thead>
+    <tbody>{% for it in items %}<tr><td>{{ it.discipline }}</td><td>{{ it.who }}</td><td>{{ it.per_week }}</td><td class="muted">{{ it.notes }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="muted" style="margin-top:8px">Если что-то не так — напишите диспетчеру.</p>
+  {% else %}<p class="muted">Нагрузка на этот семестр ещё не внесена.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Ваше расписание</h2>
+  {% if not variant %}<p class="muted">Расписание ещё не утверждено — появится здесь, когда диспетчер его утвердит.</p>
+  {% elif not weeks %}<p class="muted">В утверждённом расписании у вас нет занятий.</p>
+  {% else %}
+    <p class="muted">Вариант «{{ variant.name }}»</p>
+    <div class="cal">
+      <p><a class="btn" href="{% url 'my_calendar' %}">Скачать в календарь (.ics)</a></p>
+      {% if calendar_url %}
+        <p>Ссылка для подписки — календарь сам обновится, если расписание поменяют:</p>
+        <p><input type="text" readonly value="{{ calendar_url }}" onclick="this.select()" style="max-width:100%"></p>
+        <p class="muted">Google Календарь: «Другие календари» → «Добавить по URL». Яндекс Календарь: «Новый календарь» →
+          «Подписаться на календарь». iPhone: откройте ссылку на телефоне.</p>
+        <form method="post" action="{% url 'calendar_link' %}">{% csrf_token %}<input type="hidden" name="reset" value="1">
+          <button class="link" type="submit">Сбросить ссылку</button> <span class="muted">— если она попала к посторонним</span></form>
+      {% else %}
+        <form method="post" action="{% url 'calendar_link' %}">{% csrf_token %}
+          <button class="link" type="submit">Получить ссылку для подписки в календаре телефона</button></form>
+      {% endif %}
+    </div>
+    {% for label, rows in weeks %}
+    <h2 style="margin-top:14px">{{ label }}</h2>
+    <div class="scroll"><table class="sg">
+      <thead><tr><th class="t">Пара</th>{% for d in days %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in rows %}<tr><td class="t">{{ row.pair }}<br><span class="m">{{ row.time }}</span></td>
+        {% for cell in row.cells %}<td>{% for e in cell %}<div class="e"><div class="d">{{ e.discipline }}</div>
+          <div>{{ e.groups }}</div>{% if e.room %}<div>{{ e.room }}</div>{% endif %}
+          {% if e.marks %}<div class="m">{{ e.marks|join:" · " }}</div>{% endif %}</div>{% endfor %}</td>{% endfor %}
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

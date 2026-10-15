@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_course_changelist' %}">Курсы</a> › {{ course }} › Языковой блок</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>Все группы курса «распускаются» и идут на занятия одновременно: все подгруппы и все преподаватели
+в одних и тех же слотах. Решатель ставит такой блок как единое целое, а остальное расписание
+строит вокруг него.</p>
+<p>Группы курса ({{ groups|length }}, студентов {{ students }}):
+{% for g in groups %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
+<p>Будет создано по одной подгруппе на каждого выбранного преподавателя, численность — поровну.
+Уровни и точную численность поправьте потом в карточке блока.</p>
+<form method="post">{% csrf_token %}
+<table>{{ form.as_table }}</table>
+<p><input type="submit" class="default" value="Создать блок"></p>
+</form>
+{% endblock %}

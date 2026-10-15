@@ -1,0 +1,43 @@
+{% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}
+<style>
+.sg{border-collapse:collapse;width:100%;table-layout:fixed}
+.sg th,.sg td{border:1px solid var(--hairline-color,#ccc);padding:4px;vertical-align:top}
+.sg td.t{width:7em;white-space:nowrap}
+.sg .e{margin-bottom:4px;padding:3px 4px;border-radius:4px;background:var(--darkened-bg,#f4f4f4)}
+.sg .d{font-weight:600}
+.sg .m{font-size:11px;color:var(--body-quiet-color,#666)}
+.sg-form{margin:8px 0 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+</style>{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_schedulevariant_changelist' %}">Варианты</a> › <a href="{% url 'admin:timetable_schedulevariant_change' variant.pk %}">{{ variant.name }}</a> › Расписание</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<form class="sg-form" method="get">
+  <select name="by" onchange="this.form.key.value='';this.form.submit()">
+    {% for k, label in by_choices.items %}<option value="{{ k }}"{% if k == by %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="key" onchange="this.form.submit()">
+    {% for id, label in options %}<option value="{{ id }}"{% if id == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="week" onchange="this.form.submit()">
+    <option value="odd"{% if week == "odd" %} selected{% endif %}>нечётная неделя</option>
+    <option value="even"{% if week == "even" %} selected{% endif %}>чётная неделя</option>
+  </select>
+  <noscript><input type="submit" value="Показать"></noscript>
+  <a href="{% url 'admin:timetable_variant_free_rooms' %}?variant={{ variant.pk }}">Свободные аудитории</a> ·
+  <a href="{% url 'admin:timetable_variant_hours' variant.pk %}">Часы преподавателей</a> ·
+  <a href="{% url 'admin:timetable_variant_export' variant.pk %}">Скачать в Excel</a> ·
+  <a href="{% url 'admin:timetable_variant_ics' variant.pk %}?by={{ by }}&amp;key={{ key }}">Календарь .ics (выбранное)</a>
+</form>
+<table class="sg">
+<thead><tr><th class="t">Пара</th>{% for d in days %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+<tbody>
+{% for row in rows %}<tr><td class="t">{{ row.pair }}<br><span class="m">{{ row.time }}</span></td>
+  {% for cell in row.cells %}<td>{% for e in cell %}<div class="e"><div class="d">{{ e.discipline }}</div>
+    {% if by != "teacher" %}<div>{{ e.teachers }}</div>{% endif %}
+    {% if by != "group" %}<div>{{ e.groups }}</div>{% endif %}
+    {% if by != "room" and e.room %}<div>{{ e.room }}</div>{% endif %}
+    {% if e.marks %}<div class="m">{{ e.marks|join:" · " }}</div>{% endif %}</div>{% endfor %}</td>{% endfor %}
+</tr>{% endfor %}
+</tbody></table>
+{% endblock %}

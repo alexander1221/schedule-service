@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Расписание{% endblock %}</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2330;--muted:#5f6b7a;--line:#d9dee5;--accent:#2f6fb3;--accent-text:#fff;
+ --ok:#e7f5ea;--ok-line:#7cc08a;--warn:#fff4e0;--warn-line:#e7b45a;--err:#fdeaea;--err-line:#e08a8a}
+@media (prefers-color-scheme: dark){:root{--bg:#14171c;--card:#1d2128;--text:#e6e9ee;--muted:#9aa4b2;--line:#323844;
+ --accent:#5b9be0;--accent-text:#0d1117;--ok:#1d3324;--ok-line:#3f7a4c;--warn:#3a2f17;--warn-line:#9b7a33;--err:#3b1f1f;--err-line:#a05252}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+header .brand{font-weight:600}
+header form{margin:0}
+main{max-width:980px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+h1{font-size:1.4rem;margin:0 0 8px}
+h2{font-size:1.1rem;margin:0 0 10px}
+p{margin:0 0 10px}
+.muted{color:var(--muted)}
+label{display:block;margin:0 0 6px;font-weight:500}
+input[type=email],input[type=text],select{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);width:100%;max-width:360px}
+button,.btn{font:inherit;padding:10px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-text);cursor:pointer;text-decoration:none;display:inline-block}
+button.link{background:none;border:none;color:var(--accent);padding:0;text-decoration:underline}
+.msg{padding:10px 12px;border-radius:8px;margin-bottom:12px;border:1px solid}
+.msg.success{background:var(--ok);border-color:var(--ok-line)}
+.msg.warning{background:var(--warn);border-color:var(--warn-line)}
+.msg.error{background:var(--err);border-color:var(--err-line)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse}
+.list{width:100%}
+.list th,.list td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.pref-grid th,.pref-grid td{border:1px solid var(--line)!important}
+.pref-grid th{font-weight:500;white-space:nowrap;padding:4px 8px!important}
+.pref-grid select{padding:6px 4px;min-width:3.6em;font:inherit;background:var(--card);color:var(--text);border:1px solid var(--line)}
+.pref-grid select:disabled{opacity:.85}
+.pref-legend{margin:8px 0}
+.pref-grid th small,.sg small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.pref-grid tr>th:first-child,.sg tr>td.t,.sg tr>th.t{position:sticky;left:0;background:var(--card);z-index:1}
+.pref-legend span{border:1px solid var(--line)}
+.sg{border-collapse:collapse;width:100%;min-width:640px;table-layout:fixed}
+.sg th,.sg td{border:1px solid var(--line);padding:4px;vertical-align:top;font-size:14px}
+.sg td.t{width:6.5em;white-space:nowrap}
+.sg .e{margin-bottom:4px;padding:3px 4px;border-radius:4px;background:var(--bg)}
+.sg .d{font-weight:600}
+.sg .m{font-size:12px;color:var(--muted)}
+.chips span{display:inline-block;padding:2px 8px;border-radius:12px;margin:0 6px 6px 0;color:#111}
+@media (max-width:600px){main{padding:10px}.card{padding:12px}.sg td.t{width:4.6em}}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">Расписание</span>
+  {% if user.is_authenticated %}
+  <span class="muted">{{ user.email }}
+    <form method="post" action="{% url 'logout' %}" style="display:inline">{% csrf_token %}<button class="link">Выйти</button></form>
+  </span>
+  {% endif %}
+</header>
+<main>
+{% for message in messages %}<div class="msg {{ message.tags }}">{{ message }}</div>{% endfor %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

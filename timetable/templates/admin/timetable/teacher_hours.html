@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_schedulevariant_changelist' %}">Варианты</a> › <a href="{% url 'admin:timetable_schedulevariant_change' variant.pk %}">{{ variant.name }}</a> › Часы</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>За двухнедельный цикл; в паре {{ hours_per_pair }} академических часа. Поток (несколько групп одной парой)
+в табель идёт по каждой группе: 2КП1 + 2КП2 одной парой — {{ hours_per_pair }}×2 часа.
+<a href="?format=xlsx">Скачать xlsx</a></p>
+<table><thead><tr><th>Преподаватель</th><th>Дисциплина</th><th>Группы</th><th>Пар за 2 недели</th><th>Часов к табелю</th></tr></thead><tbody>
+{% for r in rows %}
+  {% for disc, groups, pairs, hours in r.lines %}<tr><td>{% if forloop.first %}{{ r.teacher }}{% endif %}</td><td>{{ disc }}</td><td>{{ groups }}</td><td>{{ pairs }}</td><td>{{ hours }}</td></tr>{% endfor %}
+  <tr><td></td><td colspan="2"><b>Итого</b> (фактически в аудитории: {{ r.pairs_actual }} пар = {{ r.hours_actual }} ч)</td><td></td><td><b>{{ r.hours_tabel }}</b></td></tr>
+{% endfor %}
+</tbody></table>
+{% endblock %}

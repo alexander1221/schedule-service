@@ -1,0 +1,34 @@
+# Образ сервиса расписания: Django + решатель OR-Tools, сервер gunicorn.
+# Сборка: docker compose build   (см. docs/DEPLOY.md)
+ARG BASE_IMAGE=python:3.13-slim
+FROM ${BASE_IMAGE}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH \
+    STATIC_ROOT=/srv/static \
+    SCHEDULE_DATA_DIR=/srv/data
+
+WORKDIR /app
+RUN python3 -m venv /opt/venv
+
+# Зависимости — отдельным слоем: при правке кода не переустанавливаются.
+# --require-hashes: ставится ровно то, что в lock-файле, с проверкой SHA256.
+COPY requirements-lock.txt ./
+RUN pip install --require-hashes -r requirements-lock.txt
+
+COPY . .
+RUN useradd --system --home /app app \
+ && mkdir -p /srv/static /srv/data \
+ && chown -R app /srv/static /srv/data \
+ && chmod +x deploy/entrypoint.sh
+
+USER app
+EXPOSE 8000
+ENTRYPOINT ["deploy/entrypoint.sh"]
+# Решатель запускается командой manage.py solve_semester (docker compose exec web …), не в запросе,
+# поэтому таймаут gunicorn обычный.
+CMD ["gunicorn", "webapp.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "--access-logfile", "-", "--no-control-socket"]

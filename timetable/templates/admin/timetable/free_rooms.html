@@ -1,0 +1,24 @@
+{% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}<style>.fr-form{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;margin:8px 0 16px}.fr-form label{display:flex;flex-direction:column;font-size:12px}.ok{color:#2e7d32;font-weight:600}</style>{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_schedulevariant_changelist' %}">Варианты</a> › Свободные аудитории</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<form class="fr-form" method="get">
+  <label>Вариант<select name="variant">{% for v in variants %}<option value="{{ v.pk }}"{% if v.pk == variant.pk %} selected{% endif %}>{{ v.semester }} — {{ v.name }}{% if v.status == "approved" %} (утверждён){% endif %}</option>{% endfor %}</select></label>
+  <label>День<select name="day">{% for d, n in days %}<option value="{{ d }}"{% if d == day %} selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+  <label>С пары<select name="pair_from">{% for p in pairs %}<option{% if p == pair_from %} selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
+  <label>по пару<select name="pair_to">{% for p in pairs %}<option{% if p == pair_to %} selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
+  <label>Неделя<select name="week"><option value="both"{% if week == "both" %} selected{% endif %}>обе</option><option value="odd"{% if week == "odd" %} selected{% endif %}>нечётная</option><option value="even"{% if week == "even" %} selected{% endif %}>чётная</option></select></label>
+  <label>Мест не меньше<input type="number" name="min_capacity" min="0" value="{{ min_capacity }}" style="width:6em"></label>
+  <label>Тип<select name="room_type"><option value="">любой</option>{% for t in room_types %}<option value="{{ t.id }}"{% if t.id == room_type %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>
+  <label>Оборудование<select name="equipment" multiple size="3">{% for e in equipment %}<option value="{{ e.code }}"{% if e.code in eq %} selected{% endif %}>{{ e.name }}</option>{% endfor %}</select></label>
+  <label>Показывать<select name="partial"><option value="1"{% if partial == "1" %} selected{% endif %}>и частично свободные</option><option value="0"{% if partial == "0" %} selected{% endif %}>только свободные весь период</option></select></label>
+  <input type="submit" class="default" value="Найти">
+</form>
+<p>Учтены занятия варианта «{{ variant.name }}» и занятость аудиторий «не нами»; неиспользуемые аудитории не показываются.</p>
+<table><thead><tr><th>Аудитория</th><th>Мест</th><th>Тип</th><th>Оборудование</th><th>Свободна на парах</th></tr></thead><tbody>
+{% for r in results %}<tr><td>{{ r.name }}</td><td>{{ r.capacity }}</td><td>{{ r.type_name }}</td><td>{{ r.equipment }}</td>
+<td>{% if r.fully_free %}<span class="ok">весь период ({{ r.free_pairs|join:", " }})</span>{% else %}{{ r.free_pairs|join:", " }}{% endif %}</td></tr>
+{% empty %}<tr><td colspan="5">Свободных аудиторий с такими условиями нет.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_workloaditem_changelist' %}">Нагрузка</a> › Массовое создание</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>Одна дисциплина сразу на несколько групп: по элементу на каждую группу, одним потоком или как допустимое объединение.</p>
+<form method="post">{% csrf_token %}
+<table>{{ form.as_table }}</table>
+<p><input type="submit" class="default" value="Создать"></p>
+</form>
+{% endblock %}

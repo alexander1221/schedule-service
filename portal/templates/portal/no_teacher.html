@@ -1,0 +1,9 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Вы вошли</h1>
+  <p>Но адрес <b>{{ user.email }}</b> не привязан ни к одному преподавателю в справочнике.</p>
+  <p class="muted">Попросите диспетчера указать эту почту в вашей карточке преподавателя — после этого здесь появятся ваши пожелания и расписание.</p>
+  {% if user.is_staff %}<p><a class="btn" href="{% url 'admin:index' %}">Перейти в админку</a></p>{% endif %}
+</div>
+{% endblock %}

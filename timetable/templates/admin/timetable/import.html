@@ -1,0 +1,23 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_semester_changelist' %}">Семестры</a> › <a href="{% url 'admin:timetable_semester_change' semester.pk %}">{{ semester }}</a> › Импорт</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>{{ hint }} <a href="{{ template_url }}">Скачать текущие данные как шаблон</a>.</p>
+{% if report %}
+  <div class="module" style="padding:8px 12px;margin-bottom:16px">
+  <h2>{% if report.applied %}Применено{% elif report.ok %}Проверка пройдена — ничего не записано{% else %}Есть ошибки — ничего не записано{% endif %}</h2>
+  <p>{{ report.summary }}</p>
+  {% if report.ok and not report.applied %}<p>Чтобы записать изменения, снимите галочку «Только проверить» и загрузите файл ещё раз.</p>{% endif %}
+  {% if report.errors %}
+    <table><thead><tr><th>Лист</th><th>Строка</th><th>Колонка</th><th>Что не так</th></tr></thead><tbody>
+    {% for e in report.errors %}<tr><td>{{ e.sheet }}</td><td>{{ e.row }}</td><td>{{ e.column }}</td><td>{{ e.message }}</td></tr>{% endfor %}
+    </tbody></table>
+  {% endif %}
+  {% if report.warnings %}<ul class="messagelist">{% for w in report.warnings %}<li class="warning">{{ w }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+{% endif %}
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+<table>{{ form.as_table }}</table>
+<p><input type="submit" class="default" value="Загрузить"></p>
+</form>
+{% endblock %}

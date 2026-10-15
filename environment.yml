@@ -1,0 +1,13 @@
+# Conda-альтернатива. Основной путь — setup.sh / setup.ps1 (venv + pip с проверкой хэшей).
+# Conda оправдана, только если в организации уже принят conda-стек: ortools ставится всё равно
+# из PyPI (на conda-forge версия может отставать), поэтому выигрыша в воспроизводимости нет.
+#   conda env create -f environment.yml && conda activate schedule-service
+name: schedule-service
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      - --require-hashes
+      - -r requirements-lock.txt

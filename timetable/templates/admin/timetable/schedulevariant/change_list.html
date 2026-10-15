@@ -1,0 +1,5 @@
+{% extends "admin/change_list.html" %}
+{% block object-tools-items %}
+  <li><a href="{% url 'admin:timetable_variant_free_rooms' %}">Свободные аудитории</a></li>
+  {{ block.super }}
+{% endblock %}

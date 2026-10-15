@@ -1,0 +1,38 @@
+# Верхнеуровневые зависимости сервиса (ядро + веб). Полный набор с транзитивными
+# зависимостями и SHA256 — requirements-lock.txt.
+# Установка «как у автора»:   pip install --require-hashes -r requirements-lock.txt
+# Через внутреннее зеркало:   pip install --index-url https://<зеркало>/simple --require-hashes -r requirements-lock.txt
+#
+# verified 2026-10-13 via PyPI JSON API (см. CHANGELOG.md, блок «Проверенные факты»).
+
+# --- Решатель ---------------------------------------------------------------
+# OR-Tools 9.15.6755 — последний релиз на PyPI на 2026-10-13 (выпущен 2026-01-14).
+# Колёса для CPython 3.9–3.14 (Linux x86_64/aarch64, macOS x86_64/arm64, Windows amd64).
+# Тянет numpy>=2.0.2, pandas>=2.0, protobuf>=6.33.1,<6.34, absl-py, immutabledict.
+# Узкий pin protobuf у OR-Tools — главная причина держать lock-файл.
+ortools==9.15.6755
+
+# --- Веб --------------------------------------------------------------------
+# Django 6.1.2 (выпущен 2026-10-06) — именно он задаёт минимум Python 3.12
+# (requires_python >= 3.12; классификаторы 3.12–3.14). Поддерживает PostgreSQL 15+
+# и SQLite 3.37+ (docs.djangoproject.com/en/6.1/ref/databases/).
+django==6.1.2
+# psycopg 3 — драйвер PostgreSQL, рекомендованный Django 6.1 (psycopg2 уходит).
+# [binary] — готовые колёса с libpq: не нужен компилятор и dev-пакеты PostgreSQL.
+# Колёса psycopg-binary 3.3.6: cp310–cp315, win_amd64 / macOS / manylinux.
+psycopg[binary]==3.3.6
+# openpyxl — чтение/запись xlsx (импорт и экспорт нагрузки и справочников).
+openpyxl==3.1.5
+
+# --- Сервер (этап 8) ---------------------------------------------------------
+# gunicorn 26.2.0 (2026-08-24, requires_python >= 3.10) — WSGI-сервер в Docker-образе. На Windows
+# не запускается (нет fork) — там для пилота хватает runserver; в lock он помечен только для не-Windows.
+gunicorn==26.2.0 ; sys_platform != "win32"
+
+# --- Не входит и почему ------------------------------------------------------
+# django-allauth — вход по коду сделан своими силами (accounts/codes.py, этап 7);
+# django-ninja (API) и Procrastinate (фоновые задачи) — этап 5; icalendar — .ics пишется
+# своим кодом (timetable/export/ics.py, ~150 строк, проверен парсером icalendar);
+# whitenoise — статику в продакшене раздаёт Caddy из общего тома.
+# dj-database-url не нужен: настройки БД читаются из нескольких переменных окружения.
+# scipy не нужен: задача о назначениях решается OR-Tools.

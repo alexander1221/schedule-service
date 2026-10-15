@@ -1,0 +1,62 @@
+# Сервис расписания на одном сервере: PostgreSQL + приложение + Caddy (HTTPS).
+# Настройки — в файле .env рядом (образец .env.example). Запуск: docker compose up -d --build
+# Подробно: docs/DEPLOY.md
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-schedule}
+      POSTGRES_USER: ${DB_USER:-schedule}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?задайте DB_PASSWORD в .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-schedule} -d ${DB_NAME:-schedule}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-python:3.13-slim}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_ENGINE: postgres
+      DB_HOST: db
+      DB_PORT: "5432"
+      DJANGO_DEBUG: "0"
+      DJANGO_BEHIND_PROXY: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - static:/srv/static
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  static:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,66 @@
+[project]
+name = "schedule-service"
+version = "0.7.0"
+description = "Сервис автоматического составления расписания колледжа: ядро (CP-SAT, валидатор) и Django-админка"
+readme = "README.md"
+# 3.12 — минимум из-за Django 6.x (requires-python >= 3.12), который подключается на этапе 4.
+# Само ядро работает и на 3.10+, но держим одну версию на весь проект.
+requires-python = ">=3.12"
+dependencies = [
+    "ortools==9.15.6755",
+    "django==6.1.2",
+    "psycopg[binary]==3.3.6",
+    "openpyxl==3.1.5",
+    "gunicorn==26.2.0; sys_platform != 'win32'",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+    "ruff==0.17.0",
+    "mypy==2.4.0",
+]
+
+[project.scripts]
+schedule-cli = "scheduler.cli:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["scheduler*", "timetable*", "accounts*", "webapp*", "portal*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "tests_web"]
+pythonpath = ["."]
+DJANGO_SETTINGS_MODULE = "webapp.settings"
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["*/migrations/*"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # кириллица и типографские символы в строках/комментариях — норма
+    "B008",
+    "SIM108",  # тернарники в цепочку читаются хуже if/else
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B018"]
+# Django: Meta.ordering/fields, list_display и т.п. — изменяемые атрибуты класса по замыслу фреймворка
+"timetable/*" = ["RUF012"]
+"accounts/*" = ["RUF012"]
+"tests_web/*" = ["RUF012"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["scheduler"]
+ignore_missing_imports = true
+warn_unused_ignores = false
+check_untyped_defs = true
+allow_redefinition = true

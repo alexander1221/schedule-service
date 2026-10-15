@@ -1,0 +1,14 @@
+{% extends "portal/base.html" %}
+{% block title %}Вход — Расписание{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px">
+  <h1>Вход</h1>
+  <p class="muted">Введите рабочую почту — пришлём на неё код из 6 цифр. Пароль не нужен.</p>
+  <form method="post">{% csrf_token %}
+    <label for="email">Почта</label>
+    <p><input id="email" type="email" name="email" value="{{ email }}" autocomplete="email" required autofocus></p>
+    <button type="submit">Получить код</button>
+  </form>
+  <p class="muted" style="margin-top:12px">Если письмо не приходит, проверьте «Спам». Войти могут только адреса, которые диспетчер внёс в список.</p>
+</div>
+{% endblock %}
