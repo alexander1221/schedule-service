@@ -30,6 +30,8 @@ class Crit(StrEnum):
     CHANGES = "changes"  # отличия от эталонного расписания (режим пересборки)
     ROOM_CHANGES = "room_changes"  # этап 2: смена аудитории группой между соседними парами
     ROOM_PREF = "room_pref"  # этап 2: занятие не в предпочтительной аудитории преподавателя
+    #: этап 2, пересборка: занятие осталось в то же время, но не в той аудитории, что в эталоне
+    ROOM_REF = "room_ref"
 
 
 LABELS: dict[Crit, str] = {
@@ -51,6 +53,7 @@ LABELS: dict[Crit, str] = {
     Crit.CHANGES: "Отличия от текущего расписания",
     Crit.ROOM_CHANGES: "Смена аудитории между соседними парами",
     Crit.ROOM_PREF: "Не в предпочтительной аудитории преподавателя",
+    Crit.ROOM_REF: "Другая аудитория, чем в текущем расписании",
 }
 
 #: Цена значения шкалы предпочтений (умножается на вес критерия).
@@ -78,11 +81,13 @@ DEFAULT_WEIGHTS: dict[Crit, int] = {
     Crit.CHANGES: 50,
     Crit.ROOM_CHANGES: 1,
     Crit.ROOM_PREF: 3,
+    # пересборка: прежняя аудитория важнее стабильности группы и предпочтений (×1000 на этапе 2)
+    Crit.ROOM_REF: 10,
 }
 
 #: Критерии этапа 2 (конкретные аудитории): решатель слотов их не видит, их оптимизирует
 #: назначение аудиторий, а итог считает валидатор.
-ROOM_STAGE_CRITS: frozenset[Crit] = frozenset({Crit.ROOM_CHANGES, Crit.ROOM_PREF})
+ROOM_STAGE_CRITS: frozenset[Crit] = frozenset({Crit.ROOM_CHANGES, Crit.ROOM_PREF, Crit.ROOM_REF})
 
 #: Порядок по умолчанию для лексикографического режима (уровни сверху вниз).
 DEFAULT_LEX_LEVELS: list[list[Crit]] = [
@@ -99,8 +104,7 @@ DEFAULT_LEX_LEVELS: list[list[Crit]] = [
             Crit.FMT_ONLINE_TO_IN,
             Crit.GROUP_GAPS,
             Crit.TEACHER_GAPS,
-            Crit.ROOM_CHANGES,
-            Crit.ROOM_PREF,
+            *ROOM_STAGE_CRITS,
         }
     ],
 ]

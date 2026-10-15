@@ -35,10 +35,10 @@
 
 {% if variants %}
 <h2>Варианты</h2>
-<table><thead><tr><th>Вариант</th><th>Штраф</th>{% if run.reference %}<th>Изменений от эталона</th>{% endif %}<th>Статус решателя</th><th></th></tr></thead><tbody>
+<table><thead><tr><th>Вариант</th><th>Штраф</th>{% if run.reference %}<th>Сдвинуто по времени</th><th>Сменили аудиторию</th>{% endif %}<th>Статус решателя</th><th></th></tr></thead><tbody>
 {% for v in variants %}<tr>
   <td><a href="{% url 'admin:timetable_schedulevariant_change' v.pk %}">{{ v.name }}</a></td>
-  <td>{{ v.total }}</td>{% if run.reference %}<td>{{ v.params.changes|default_if_none:"—" }}</td>{% endif %}<td>{{ v.solver_status }}</td>
+  <td>{{ v.total }}</td>{% if run.reference %}<td>{{ v.params.changes|default_if_none:"—" }}</td><td>{{ v.params.room_changes|default_if_none:"—" }}</td>{% endif %}<td>{{ v.solver_status }}</td>
   <td><a href="{% url 'admin:timetable_variant_grid' v.pk %}">расписание</a> · <a href="{% url 'admin:timetable_variant_export' v.pk %}">Excel ⇣</a></td>
 </tr>{% endfor %}
 </tbody></table>

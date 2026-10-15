@@ -12,7 +12,8 @@
 и быстро). Если склейка мешает — точная маленькая CP-SAT-модель без склейки.
 
 Стоимость: смена аудитории группой относительно предыдущей пары дня, занятие не в
-предпочтительной аудитории преподавателя (веса — из профиля) и немного — лишние места.
+предпочтительной аудитории преподавателя, при пересборке — аудитория не та, что в эталоне у того
+же занятия в то же время (веса — из профиля), и немного — лишние места.
 
 Если и точная модель не находит назначения, этап 2 сообщает этапу 1, что именно мешает:
 * по какой-то неделе аудиторий не хватает → узкий набор аудиторий N(U′) из условия Холла
@@ -30,7 +31,7 @@ from ortools.graph.python import linear_sum_assignment as lsa
 from ortools.sat.python import cp_model
 
 from ..criteria import Crit, WeightProfile
-from ..domain import CYCLE_WEEKS, Assignment, Format, Problem, Week, weeks_of
+from ..domain import CYCLE_WEEKS, Assignment, Format, Problem, Schedule, Week, weeks_of
 from ..matching import max_matching
 
 UNIT_COST = 1000  # цена одной единицы критерия этапа 2 при весе 1 (места — по 1)
@@ -50,6 +51,14 @@ class RoomAssignmentError(RuntimeError):
         self.nogood = nogood
 
 
+@dataclass(frozen=True)
+class _Costs:
+    stab: int  # смена аудитории группой между соседними парами (за группу и неделю)
+    pref: int  # не в предпочтительной аудитории преподавателя (за событие и неделю)
+    ref: int  # не та аудитория, что в эталоне (за элемент и неделю) — как Crit.ROOM_REF в валидаторе
+    ref_room: dict[tuple[str, Week, str], str]  # (элемент, неделя, слот) → аудитория эталона
+
+
 @dataclass
 class _Entity:
     """То, что займёт одну аудиторию в слоте: событие или склейка мигающих."""
@@ -64,12 +73,28 @@ class _Entity:
 
 
 def assign_rooms(
-    problem: Problem, assignments: list[Assignment], profile: WeightProfile | None = None
+    problem: Problem,
+    assignments: list[Assignment],
+    profile: WeightProfile | None = None,
+    reference: Schedule | None = None,
 ) -> list[Assignment]:
-    """Возвращает копии назначений с заполненными room_id для очных занятий и дистанта с бронью."""
+    """Возвращает копии назначений с заполненными room_id для очных занятий и дистанта с бронью.
+
+    ``reference`` — эталон пересборки: занятие, оставшееся в то же время, держится в своей прежней
+    аудитории, если она подходит и свободна."""
     p = problem
     prof = profile or WeightProfile()
-    costs = (prof.weight(Crit.ROOM_CHANGES) * UNIT_COST, prof.weight(Crit.ROOM_PREF) * UNIT_COST)
+    ref_room: dict[tuple[str, Week, str], str] = {}
+    for a in reference.assignments if reference is not None else []:
+        if a.room_id:
+            for k in weeks_of(a.week):
+                ref_room[(a.item_id, k, a.slot_id)] = a.room_id
+    costs = _Costs(
+        prof.weight(Crit.ROOM_CHANGES) * UNIT_COST,
+        prof.weight(Crit.ROOM_PREF) * UNIT_COST,
+        prof.weight(Crit.ROOM_REF) * UNIT_COST,
+        ref_room,
+    )
     pin_room = {(pin.item_id, pin.week, pin.slot_id): pin.room_id for pin in p.pins if pin.room_id}
     out = [Assignment(a.item_id, a.week, a.slot_id, None, a.teacher_remote) for a in assignments]
     by_slot: dict[str, list[Assignment]] = defaultdict(list)
@@ -95,7 +120,14 @@ def assign_rooms(
     return out
 
 
-def _entities(p: Problem, sid: str, slot_as: list[Assignment], pin_room: dict, pair: bool = True) -> list[_Entity]:
+def _entities(
+    p: Problem,
+    sid: str,
+    slot_as: list[Assignment],
+    pin_room: dict,
+    pair: bool = True,
+    ref_room: dict[tuple[str, Week, str], str] | None = None,
+) -> list[_Entity]:
     # события: объединённые элементы в одном слоте/неделе -> одно занятие
     ev: dict[tuple[str, Week], list[Assignment]] = defaultdict(list)
     for a in slot_as:
@@ -122,38 +154,58 @@ def _entities(p: Problem, sid: str, slot_as: list[Assignment], pin_room: dict, p
     ents = list(weekly)
     odd = sorted(blink.get(Week.ODD, []), key=lambda e: (len(e.eligible), -e.size))
     even = sorted(blink.get(Week.EVEN, []), key=lambda e: (len(e.eligible), -e.size))
+    ref_room = ref_room or {}
+
+    def was_in(e: _Entity, k: Week) -> str | None:  # аудитория мигающего события в эталоне
+        return next((r for x in e.parts[0] if (r := ref_room.get((x.item_id, k, sid)))), None)
+
+    def glue(a: _Entity, b: _Entity) -> _Entity:
+        return _Entity(
+            a.parts + b.parts,
+            a.weeks + b.weeks,
+            a.eligible & b.eligible,
+            max(a.size, b.size),
+            a.groups + b.groups,
+            a.preferred + b.preferred,
+        )
+
+    # 1) пересборка: пары, делившие аудиторию в эталоне (если она подходит обеим), склеиваем первыми —
+    #    иначе их партнёров заберут другие и прежние аудитории не сохранить
+    if ref_room:
+        for a in list(odd):
+            ra = was_in(a, Week.ODD)
+            b = next((b for b in even if ra and was_in(b, Week.EVEN) == ra and ra in a.eligible & b.eligible), None)
+            if b is not None:
+                odd.remove(a)
+                even.remove(b)
+                ents.append(glue(a, b))
+    # 2) остальные — с чётной, у которой больше всего общих подходящих аудиторий
     for a in odd:
-        # склеиваем с чётной, у которой больше всего общих подходящих аудиторий
         best = max(even, key=lambda b: len(a.eligible & b.eligible), default=None)
         if best is not None and a.eligible & best.eligible:
             even.remove(best)
-            ents.append(
-                _Entity(
-                    a.parts + best.parts,
-                    a.weeks + best.weeks,
-                    a.eligible & best.eligible,
-                    max(a.size, best.size),
-                    a.groups + best.groups,
-                    a.preferred + best.preferred,
-                )
-            )
+            ents.append(glue(a, best))
         else:
             ents.append(a)
     ents += even
     return ents
 
 
-def _cost(p: Problem, e: _Entity, room_id: str, prev: dict[tuple[str, Week], str], costs: tuple[int, int]) -> int:
-    stab, pref_cost = costs
+def _cost(p: Problem, e: _Entity, room_id: str, prev: dict[tuple[str, Week], str], costs: _Costs) -> int:
     c = abs(p.room_by_id[room_id].capacity - e.size)  # лишние (или недостающие) места
-    for gs, wk, pref in zip(e.groups, e.weeks, e.preferred, strict=True):
+    for part, gs, wk, pref in zip(e.parts, e.groups, e.weeks, e.preferred, strict=True):
         for k in wk:
             for g in gs:
                 r = prev.get((g, k))
                 if r is not None and r != room_id:
-                    c += stab
+                    c += costs.stab
             if pref and room_id not in pref:
-                c += pref_cost
+                c += costs.pref
+            if costs.ref_room:
+                for x in part:
+                    r = costs.ref_room.get((x.item_id, k, x.slot_id))
+                    if r is not None and r != room_id:
+                        c += costs.ref
     return c
 
 
@@ -163,11 +215,11 @@ def _solve_slot(
     slot_as: list[Assignment],
     pin_room: dict,
     prev: dict[tuple[str, Week], str],
-    costs: tuple[int, int],
+    costs: _Costs,
 ) -> None:
     if not slot_as:
         return
-    ents = _entities(p, sid, slot_as, pin_room)
+    ents = _entities(p, sid, slot_as, pin_room, ref_room=costs.ref_room)
     rooms = sorted({r for e in ents for r in e.eligible})
     n = len(rooms)
     if len(ents) <= n and all(e.eligible for e in ents):
@@ -197,9 +249,7 @@ def _solve_slot(
     raise _diagnose(p, sid, singles)
 
 
-def _solve_slot_cpsat(
-    p: Problem, ents: list[_Entity], prev: dict[tuple[str, Week], str], costs: tuple[int, int]
-) -> bool:
+def _solve_slot_cpsat(p: Problem, ents: list[_Entity], prev: dict[tuple[str, Week], str], costs: _Costs) -> bool:
     """Точная модель слота: еженедельное — одна аудитория обе недели, мигающие делят по неделям."""
     if any(not e.eligible for e in ents):
         return False

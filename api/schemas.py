@@ -154,7 +154,8 @@ class VariantOut(Schema):
     created_at: dt.datetime
     wall_time_s: float | None
     run_id: int | None
-    changes: int | None = Field(description="при пересборке: изменений от эталона")
+    changes: int | None = Field(description="при пересборке: занятий сдвинуто по времени относительно эталона")
+    room_changes: int | None = Field(description="при пересборке: то же время, но другая аудитория, чем в эталоне")
 
 
 class Crit(Schema):

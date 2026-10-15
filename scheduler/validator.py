@@ -473,6 +473,26 @@ def validate(
                 mine[key] -= 1
             else:
                 br[Crit.CHANGES] += 1
+        # аудитории: занятие в то же время (элемент, неделя, слот), но в другой аудитории, чем в эталоне;
+        # по неделям цикла и по элементам (объединённые элементы — каждый отдельно)
+        ref_room: dict[tuple[str, Week, str], str] = {}
+        for a in reference.assignments:
+            if a.room_id:
+                for k in weeks_of(a.week):
+                    ref_room[(a.item_id, k, a.slot_id)] = a.room_id
+        for a in good:
+            if not a.room_id:
+                continue
+            for k in weeks_of(a.week):
+                r = ref_room.get((a.item_id, k, a.slot_id))
+                if r and r != a.room_id:
+                    old = p.room_by_id[r].name if r in p.room_by_id else r
+                    add(
+                        Crit.ROOM_REF,
+                        1,
+                        f"{name(a.item_id)}: {_sl(p, a.slot_id)} ({WEEK_RU[k]}) — {old} → "
+                        f"{p.room_by_id[a.room_id].name}",
+                    )
 
     rep.total = prof.total(br)
     return rep

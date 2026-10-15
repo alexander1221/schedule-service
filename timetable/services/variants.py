@@ -165,8 +165,16 @@ def run_and_save(
                     "mode": params.profile.mode.value,
                     "reference": bool(params.reference),
                     "stopped": result.stopped,
-                    # пересборка: сколько назначений отличается от эталона (в штраф варианта не входит)
-                    **({"changes": var.breakdown.get(Crit.CHANGES, 0)} if params.reference else {}),
+                    # пересборка: сколько занятий сдвинуто по времени и сколько осталось в то же время, но
+                    # в другой аудитории, чем в эталоне (в штраф варианта не входит)
+                    **(
+                        {
+                            "changes": var.breakdown.get(Crit.CHANGES, 0),
+                            "room_changes": var.breakdown.get(Crit.ROOM_REF, 0),
+                        }
+                        if params.reference
+                        else {}
+                    ),
                 },
                 solver_status=var.status.value,
                 objective=var.objective,

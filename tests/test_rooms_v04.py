@@ -170,11 +170,11 @@ def test_stage2_cut_loop_resolves(monkeypatch):
     real = cpsat_mod.assign_rooms
     calls = {"n": 0}
 
-    def flaky(problem, assignments, profile=None):
+    def flaky(problem, assignments, profile=None, reference=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RoomAssignmentError("тест", "1-1", cut=frozenset({"r1"}))
-        return real(problem, assignments, profile)
+        return real(problem, assignments, profile, reference)
 
     monkeypatch.setattr(cpsat_mod, "assign_rooms", flaky)
     res = solve(p)

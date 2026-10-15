@@ -166,7 +166,7 @@ class CpSatSolver:
             rounds = 0
             while st in (cp_model.OPTIMAL, cp_model.FEASIBLE) and with_rooms is None:
                 try:
-                    with_rooms = assign_rooms(problem, builder.extract(solver), params.profile)
+                    with_rooms = assign_rooms(problem, builder.extract(solver), params.profile, params.reference)
                 except RoomAssignmentError as e:
                     if _stopped(params):
                         break

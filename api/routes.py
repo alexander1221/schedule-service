@@ -368,6 +368,7 @@ def _variant_out(v: m.ScheduleVariant) -> dict:  # type: ignore[type-arg]
         wall_time_s=v.wall_time_s,
         run_id=v.run_id,
         changes=(v.params or {}).get("changes"),
+        room_changes=(v.params or {}).get("room_changes"),
     )
 
 
