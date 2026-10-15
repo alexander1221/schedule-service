@@ -221,6 +221,21 @@ def test_check_as_is_and_with_move(api, variant):
     mv = {"item_id": a.item_id, "week": a.week, "day": a.day, "pair": a.pair, "to_day": a.day, "to_pair": a.pair}
     same = jpost(api, f"{API}/variants/{variant.pk}/check", {"moves": [mv]}).json()
     assert same["ok"] and same["delta"] == 0
+    # перенос на занятое время другого занятия того же преподавателя → нарушение знает клетку и элементы
+    b = (
+        variant.assignments.filter(item__teachers__in=a.item.teachers.all(), week=a.week)
+        .exclude(item_id=a.item_id)
+        .exclude(day=a.day, pair=a.pair)
+        .first()
+    )
+    assert b is not None  # синтетика детерминирована: у преподавателя есть другие занятия
+    if b is not None:
+        clash = jpost(
+            api, f"{API}/variants/{variant.pk}/check", {"moves": [{**mv, "to_day": b.day, "to_pair": b.pair}]}
+        )
+        hard = clash.json()["hard"]
+        tc = [v for v in hard if v["code"] == "teacher_conflict"]
+        assert tc and tc[0]["slot"] == f"{b.day}-{b.pair}" and a.item_id in tc[0]["items"]
     other_day = 1 if a.day != 1 else 2
     moved = jpost(api, f"{API}/variants/{variant.pk}/check", {"moves": [{**mv, "to_day": other_day}]}).json()
     assert moved["total"] != base["total"] or not moved["ok"] or moved["delta"] == 0

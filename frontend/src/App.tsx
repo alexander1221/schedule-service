@@ -3,7 +3,21 @@ import { ApiError, api } from "./api";
 import { addMove, applyMoves, undoMove } from "./moves";
 import { DiffPanel, MovesPanel, RunPanel } from "./Panels";
 import { ScheduleGrid } from "./ScheduleGrid";
-import type { CheckResult, Diff, Entity, Grid, GridEntry, Me, Move, Run, Semester, Variant, Week, Who } from "./types";
+import type {
+  CheckResult,
+  Diff,
+  Entity,
+  Grid,
+  GridEntry,
+  Me,
+  Move,
+  Run,
+  Semester,
+  Variant,
+  Violation,
+  Week,
+  Who,
+} from "./types";
 
 const WHO: Record<Who, string> = { group: "Группа", teacher: "Преподаватель", room: "Аудитория" };
 
@@ -31,6 +45,10 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const [wishes, setWishes] = useState(false);
+  const [prefs, setPrefs] = useState<Record<string, number> | null>(null);
+  const [notice, setNotice] = useState("");
 
   const [run, setRun] = useState<Run | null>(null);
   const [diff, setDiff] = useState<Diff | null>(null);
@@ -93,6 +111,41 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
     if (!variantId || !key) return setGrid(null);
     api.grid(variantId, by, key, week).then(setGrid).catch(fail);
   }, [variantId, by, key, week, fail]);
+
+  // пожелания преподавателя (режим «Пожелания» в сетке преподавателя)
+  const showWishes = wishes && by === "teacher" && !!key;
+  useEffect(() => {
+    if (!showWishes || !semId) return setPrefs(null);
+    api
+      .prefs(semId, Number(key))
+      .then((p) => setPrefs(p.prefs))
+      .catch(fail);
+  }, [showWishes, semId, key, fail]);
+
+  const setPref = (slot: string, value: number) => {
+    if (!semId) return;
+    api
+      .setPref(semId, Number(key), slot, value)
+      .then((p) => {
+        setPrefs(p.prefs);
+        setNotice("Пожелание сохранено — оно учтётся при следующем расчёте.");
+      })
+      .catch(fail);
+  };
+
+  const approve = async () => {
+    const v = variants.find((x) => x.id === variantId);
+    if (!v || !semId) return;
+    if (!window.confirm(`Утвердить «${v.name}»? Преподаватели увидят это расписание, прежний утверждённый станет черновиком.`))
+      return;
+    try {
+      await api.approve(v.id);
+      await loadVariants(semId, v.id);
+      setNotice(`Вариант «${v.name}» утверждён.`);
+    } catch (e) {
+      fail(e);
+    }
+  };
 
   // мгновенная проверка черновика независимым валидатором
   const checkSeq = useRef(0);
@@ -187,6 +240,12 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
 
   const variant = variants.find((v) => v.id === variantId) ?? null;
   const shown = grid && sem ? applyMoves(grid, sem.days, moves) : [];
+  // нарушения черновика, видимые на этой неделе: клетка → тексты; элементы, из-за которых нарушения
+  const visible = (check?.hard ?? []).filter((v) => v.slot && (!v.week || v.week === week));
+  const bad = new Map<string, string[]>();
+  for (const v of visible) bad.set(v.slot!, [...(bad.get(v.slot!) ?? []), v.message]);
+  const badItems = new Set(visible.flatMap((v) => v.items));
+  const showViolation = (v: Violation) => v.week && v.week !== week && setWeek(v.week);
 
   return (
     <div className="app">
@@ -213,6 +272,12 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
             ))}
           </select>
         </label>
+        {variant?.status === "approved" && <span className="approved">✓ утверждён</span>}
+        {variant?.status === "draft" && can("change_schedulevariant") && (
+          <button type="button" onClick={approve} disabled={moves.length > 0} title={moves.length ? "Сначала разберитесь с переносами" : undefined}>
+            Утвердить
+          </button>
+        )}
         <span className="me">
           {me ? `${me.name} · версия ${me.version}` : ""} · <a href="/admin/">админка</a>
         </span>
@@ -222,6 +287,14 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
         <p className="error" role="alert">
           {error}{" "}
           <button type="button" onClick={() => setError("")}>
+            ×
+          </button>
+        </p>
+      )}
+      {notice && (
+        <p className="notice" role="status">
+          {notice}{" "}
+          <button type="button" onClick={() => setNotice("")} aria-label="Закрыть">
             ×
           </button>
         </p>
@@ -251,6 +324,16 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
                   </option>
                 ))}
               </select>
+              {by === "teacher" && (
+                <button
+                  type="button"
+                  aria-pressed={wishes}
+                  onClick={() => setWishes((w) => !w)}
+                  title="Показать пожелания преподавателя по клеткам и изменить их"
+                >
+                  Пожелания
+                </button>
+              )}
               <div role="group" aria-label="Неделя" className="seg">
                 <button type="button" aria-pressed={week === "odd"} onClick={() => setWeek("odd")}>
                   нечётная
@@ -265,7 +348,11 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
                 grid={grid}
                 days={sem.days}
                 shown={shown}
-                readOnly={busy}
+                readOnly={busy || showWishes}
+                bad={bad}
+                badItems={badItems}
+                prefs={showWishes ? prefs : null}
+                onPref={can("change_teacheravailability") ? setPref : undefined}
                 onMove={onMove}
                 onUndo={(entry, day, pair) => setMoves((ms) => undoMove(ms, entry, day, pair))}
               />
@@ -282,6 +369,7 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
               busy={busy}
               onReset={() => setMoves([])}
               onRebuild={rebuild}
+              onShowViolation={showViolation}
             />
             {run && (
               <RunPanel

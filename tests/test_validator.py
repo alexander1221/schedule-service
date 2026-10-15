@@ -170,3 +170,17 @@ def test_changes_against_reference():
     ref = Schedule([A("i1", B, "1-1", "r1"), A("i1", B, "1-2", "r1")])
     new = Schedule([A("i1", B, "1-1", "r1"), A("i1", B, "1-3", "r1")])
     assert validate(p, new, reference=ref).breakdown[Crit.CHANGES] == 1
+
+
+def test_violations_know_where_they_are():
+    """Слот, неделя и элементы у нарушения — для подсветки клетки в интерфейсе (0.12.0)."""
+    p = tiny(n_groups=2)
+    add_item(p, "i1", teacher="t1", groups=["g1"])
+    add_item(p, "i2", teacher="t1", groups=["g2"], disc="d2")
+    p.teachers[0].prefs["1-3"] = -2
+    rep = validate(p, Schedule([A("i1", B, "1-1", "r1"), A("i2", B, "1-1", "r2"), A("i1", OD, "1-3", "r1")]))
+    by = {(v.code, v.week): v for v in rep.hard}
+    conflict = by[("teacher_conflict", "odd")]
+    assert conflict.slot == "1-1" and set(conflict.items) == {"i1", "i2"}
+    assert by[("teacher_forbidden", "odd")].slot == "1-3" and by[("teacher_forbidden", "odd")].items == ("i1",)
+    assert all(v.slot for v in rep.hard if v.code != "count")  # «число пар за цикл» к клетке не привязано

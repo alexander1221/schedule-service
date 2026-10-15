@@ -10,16 +10,30 @@ interface Picked {
   pair: number;
 }
 
+export const PREF_LABEL: Record<number, string> = {
+  [-2]: "нельзя",
+  [-1]: "нежелательно",
+  0: "всё равно",
+  1: "удобно",
+  2: "очень удобно",
+};
+
 interface Props {
   grid: Grid;
   days: number[];
   shown: ShownEntry[][][];
   readOnly?: boolean;
+  /** клетки с нарушениями черновика: «день-пара» → тексты; и элементы, из-за которых нарушения */
+  bad?: Map<string, string[]>;
+  badItems?: Set<number>;
+  /** режим пожеланий преподавателя: значения по клеткам и изменение */
+  prefs?: Record<string, number> | null;
+  onPref?: (slot: string, value: number) => void;
   onMove: (entry: GridEntry, day: number, pair: number, toDay: number, toPair: number) => void;
   onUndo: (entry: GridEntry, day: number, pair: number) => void;
 }
 
-export function ScheduleGrid({ grid, days, shown, readOnly, onMove, onUndo }: Props) {
+export function ScheduleGrid({ grid, days, shown, readOnly, bad, badItems, prefs, onPref, onMove, onUndo }: Props) {
   const dragging = useRef<Picked | null>(null);
   const [picked, setPicked] = useState<Picked | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -58,12 +72,17 @@ export function ScheduleGrid({ grid, days, shown, readOnly, onMove, onUndo }: Pr
               {days.map((day, di) => {
                 const id = `${day}-${row.pair}`;
                 const items = shown[ri]?.[di] ?? [];
+                const problems = bad?.get(id);
+                const pref = prefs ? (prefs[id] ?? 0) : null;
                 return (
                   <td
                     key={id}
                     data-slot={id}
-                    aria-label={`${grid.days[di]}, ${row.pair}-я пара`}
-                    className={`cell${over === id ? " over" : ""}${picked ? " target" : ""}`}
+                    aria-label={`${grid.days[di]}, ${row.pair}-я пара${problems ? ", нарушение" : ""}`}
+                    title={problems?.join("\n")}
+                    className={`cell${over === id ? " over" : ""}${picked ? " target" : ""}${problems ? " bad" : ""}${
+                      pref !== null ? ` pref pref${pref}` : ""
+                    }`}
                     onDragOver={(e) => {
                       if (readOnly || !dragging.current) return;
                       e.preventDefault();
@@ -76,13 +95,30 @@ export function ScheduleGrid({ grid, days, shown, readOnly, onMove, onUndo }: Pr
                     }}
                     onClick={() => picked && drop(day, row.pair, picked)}
                   >
+                    {pref !== null && (
+                      <select
+                        className="pref-select"
+                        aria-label={`Пожелание: ${grid.days[di]}, ${row.pair}-я пара`}
+                        value={pref}
+                        disabled={!onPref}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => onPref?.(id, Number(e.target.value))}
+                      >
+                        {[2, 1, 0, -1, -2].map((v) => (
+                          <option key={v} value={v}>
+                            {v > 0 ? `+${v}` : v} {PREF_LABEL[v]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {items.map((s, k) => {
                       const canMove = !readOnly && s.entry.lessons.length > 0;
+                      const isBad = !!problems && s.entry.lessons.some((l) => badItems?.has(l.item_id));
                       const isPicked = picked?.entry === s.entry;
                       return (
                         <div
                           key={k}
-                          className={`lesson${s.moved ? " moved" : ""}${isPicked ? " picked" : ""}`}
+                          className={`lesson${s.moved ? " moved" : ""}${isPicked ? " picked" : ""}${isBad ? " bad" : ""}`}
                           draggable={canMove}
                           role={canMove ? "button" : undefined}
                           tabIndex={canMove ? 0 : undefined}

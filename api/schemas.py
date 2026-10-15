@@ -173,6 +173,9 @@ class VariantDetail(VariantOut):
 class Violation(Schema):
     code: str
     message: str
+    slot: str | None = Field(None, description="где: «день-пара»; пусто — не привязано к клетке")
+    week: str | None = Field(None, description="odd | even; пусто — обе недели или не важно")
+    items: list[int] = Field(default_factory=list, description="элементы нагрузки, из-за которых нарушение")
 
 
 class Move(Schema):

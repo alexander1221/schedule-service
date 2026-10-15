@@ -1,6 +1,6 @@
 [project]
 name = "schedule-service"
-version = "0.11.0"
+version = "0.12.0"
 description = "Сервис автоматического составления расписания колледжа: ядро (CP-SAT, валидатор) и Django-админка"
 readme = "README.md"
 # 3.12 — минимум из-за Django 6.x (requires-python >= 3.12), который подключается на этапе 4.

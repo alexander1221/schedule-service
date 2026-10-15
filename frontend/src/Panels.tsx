@@ -1,6 +1,6 @@
 // Боковые панели: черновик переносов с проверкой, ход расчёта, сравнение вариантов.
 import { useState } from "react";
-import type { CheckResult, Diff, Move, Run, Variant } from "./types";
+import type { CheckResult, Diff, Move, Run, Variant, Violation } from "./types";
 
 const DAYS = ["", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 const WEEKS: Record<string, string> = { both: "каждую неделю", odd: "нечётная", even: "чётная" };
@@ -17,6 +17,7 @@ export function MovesPanel(props: {
   busy: boolean;
   onReset: () => void;
   onRebuild: (minutes: number, variants: number) => void;
+  onShowViolation?: (v: Violation) => void;
 }) {
   const { moves, labels, check, checking, checkError } = props;
   const [minutes, setMinutes] = useState(5);
@@ -57,10 +58,19 @@ export function MovesPanel(props: {
                 {check.delta})
               </span>
             </p>
+            {check.hard.some((v) => v.slot) && <p className="muted">Клетки с нарушениями выделены в сетке красным.</p>}
             {check.hard.length > 0 && (
               <ul className="violations">
                 {check.hard.slice(0, 12).map((v, i) => (
-                  <li key={i}>{v.message}</li>
+                  <li key={i}>
+                    {v.slot && v.week && props.onShowViolation ? (
+                      <button type="button" className="link" onClick={() => props.onShowViolation!(v)} title="Показать в сетке">
+                        {v.message}
+                      </button>
+                    ) : (
+                      v.message
+                    )}
+                  </li>
                 ))}
               </ul>
             )}

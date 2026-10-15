@@ -6,6 +6,7 @@
 """
 
 import copy
+from typing import Any
 
 from django.contrib.admin.models import ADDITION, DELETION
 from django.contrib.admin.views.decorators import staff_member_required
@@ -411,11 +412,16 @@ def variant_approve(request: HttpRequest, variant_id: int):  # type: ignore[no-u
     return s.VariantOut(**_variant_out(v))
 
 
+def _violation(v: Any) -> s.Violation:
+    items = [int(i) for i in v.items if str(i).isdigit()]
+    return s.Violation(code=v.code, message=v.message, slot=v.slot, week=v.week, items=items)
+
+
 def _report(rep: Report) -> dict:  # type: ignore[type-arg]
     return dict(
         ok=rep.ok,
-        hard=[s.Violation(code=x.code, message=x.message) for x in rep.hard],
-        warnings=[s.Violation(code=x.code, message=x.message) for x in rep.warnings],
+        hard=[_violation(x) for x in rep.hard],
+        warnings=[_violation(x) for x in rep.warnings],
         total=rep.total,
         breakdown=_crits(rep.breakdown),
     )

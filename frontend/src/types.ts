@@ -83,6 +83,18 @@ export interface Move {
 export interface Violation {
   code: string;
   message: string;
+  /** где: «день-пара»; null — не привязано к клетке */
+  slot: string | null;
+  /** odd | even; null — обе недели */
+  week: Week | null;
+  items: number[];
+}
+
+export interface Prefs {
+  teacher: { id: number; name: string };
+  semester_id: number;
+  /** «день-пара» → −2…+2; нет ключа — «всё равно» */
+  prefs: Record<string, number>;
 }
 
 export interface CheckResult {

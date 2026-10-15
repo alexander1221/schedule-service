@@ -93,3 +93,25 @@ aside { display: flex; flex-direction: column; gap: 12px; }
 .rebuild input { width: 5em; }
 .changes { max-height: 60vh; overflow-y: auto; }
 .changes li { margin-bottom: 6px; }
+
+/* нарушения черновика (0.12.0) */
+:root { --bad-bg: #fde7e5; --pref-2: #f6d3d0; --pref-1: #fbe9e2; --pref1: #e5f3e8; --pref2: #cfead6; }
+@media (prefers-color-scheme: dark) {
+  :root { --bad-bg: #43201e; --pref-2: #4a2523; --pref-1: #3a2a25; --pref1: #1f3626; --pref2: #234a2f; }
+}
+.grid td.cell.bad { background: var(--bad-bg); box-shadow: inset 0 0 0 2px var(--bad); }
+.lesson.bad { border-color: var(--bad); border-style: solid; border-width: 2px; }
+.panel ul.violations { list-style: none; padding-left: 0; }
+.violations li { display: flex; gap: 6px; align-items: baseline; margin-bottom: 4px; }
+.violations li::before { content: "✗"; flex: none; }
+.violations button.link { background: none; border: 0; padding: 0; color: inherit; font-weight: inherit; text-decoration: underline dotted; text-align: left; }
+
+/* пожелания преподавателя */
+.grid td.cell.pref-2 { background: var(--pref-2); }
+.grid td.cell.pref-1 { background: var(--pref-1); }
+.grid td.cell.pref1 { background: var(--pref1); }
+.grid td.cell.pref2 { background: var(--pref2); }
+.pref-select { width: 100%; font-size: 11px; margin-bottom: 3px; padding: 1px 2px; }
+.top .approved { color: var(--good); font-weight: 600; }
+.notice { background: var(--surface); border: 1px solid var(--good); color: var(--good); padding: 6px 12px; border-radius: 6px; }
+button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }

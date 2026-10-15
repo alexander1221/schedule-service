@@ -31,10 +31,13 @@ const grid = {
   })),
 };
 
-function mockApi(opts: { me401?: boolean } = {}) {
+function mockApi(opts: { me401?: boolean; draft?: boolean } = {}) {
   const calls: Call[] = [];
   let runPolls = 0;
-  const variants = [{ id: 7, semester_id: 1, name: "Осень", status: "approved", total: 100, changes: null, room_changes: null }];
+  const variants = [
+    { id: 7, semester_id: 1, name: "Осень", status: opts.draft ? "draft" : "approved", total: 100, changes: null, room_changes: null },
+  ];
+  let prefs: Record<string, number> = { "5-1": -2 };
   const json = (status: number, body: unknown) =>
     Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -50,19 +53,36 @@ function mockApi(opts: { me401?: boolean } = {}) {
             email: "d@c.ru",
             name: "Диспетчер",
             version: "0.11.0",
-            permissions: ["timetable.add_pin", "timetable.add_solverun"],
+            permissions: [
+              "timetable.add_pin",
+              "timetable.add_solverun",
+              "timetable.change_schedulevariant",
+              "timetable.change_teacheravailability",
+            ],
           });
     if (p === "/semesters")
       return json(200, [
         { id: 1, name: "Осень 2026", start_date: "2026-09-01", end_date: null, status: "active", days: [1, 2, 3, 4, 5], pairs: [1, 2], active_run_id: null, approved_variant_id: 7 },
       ]);
     if (p === "/semesters/1/variants") return json(200, variants);
+    if (p === "/variants/7/entities?by=teacher") return json(200, [{ id: "15", name: "Иванова А.А." }]);
     if (p.startsWith("/variants/7/entities")) return json(200, [{ id: "11", name: "1ИТ1" }]);
+    if (p === "/variants/7/approve") {
+      variants[0].status = "approved";
+      return json(200, variants[0]);
+    }
+    if (p === "/semesters/1/teachers/15/prefs") {
+      if (method === "PATCH") prefs = { ...prefs, ...(body as { set: Record<string, number> }).set };
+      return json(200, { teacher: { id: 15, name: "Иванова А.А." }, semester_id: 1, prefs });
+    }
     if (p.startsWith("/variants/") && p.includes("/grid")) return json(200, grid);
     if (p === "/variants/7/check")
       return json(200, {
         ok: false,
-        hard: [{ code: "teacher_busy", message: "Иванова А.А.: Вт 2 — занята" }],
+        hard: [
+          { code: "teacher_conflict", message: "Иванова А.А.: Вт 2 — занята", slot: "2-2", week: "odd", items: [5] },
+          { code: "group_conflict", message: "Группа 1ИТ1: накладка в Ср 1 (чёт.)", slot: "3-1", week: "even", items: [9] },
+        ],
         warnings: [],
         total: 130,
         base_total: 100,
@@ -124,7 +144,7 @@ test("перетаскивание: мгновенная проверка, шт�
   fireEvent.dragStart(await lesson());
   fireEvent.dragOver(cell("2-2"));
   fireEvent.drop(cell("2-2"));
-  await screen.findByText(/Нельзя: нарушений 1/);
+  await screen.findByText(/Нельзя: нарушений 2/);
   expect(checks(calls).at(-1)!.body).toEqual({
     moves: [{ item_id: 5, week: "both", day: 1, pair: 1, to_day: 2, to_pair: 2 }],
   });
@@ -171,4 +191,46 @@ test("без входа — ссылка на вход в админку", async
   render(<App />);
   const link = await screen.findByRole("link", { name: "Войдите в админку" });
   expect(link.getAttribute("href")).toContain("/admin/login/?next=%2Fapp%2F");
+});
+
+
+test("нарушения подсвечены в сетке; щелчок по нарушению другой недели переключает неделю", async () => {
+  mockApi();
+  render(<App />);
+  fireEvent.dragStart(await lesson());
+  fireEvent.drop(cell("2-2"));
+  await screen.findByText(/Нельзя: нарушений 2/);
+  expect(cell("2-2").className).toContain("bad");
+  expect(cell("2-2").getAttribute("title")).toContain("Вт 2 — занята");
+  expect((cell("2-2").querySelector(".lesson") as HTMLElement).className).toContain("bad");
+  expect(cell("3-1").className).not.toContain("bad"); // нарушение чётной недели, а смотрим нечётную
+  fireEvent.click(screen.getByRole("button", { name: "Группа 1ИТ1: накладка в Ср 1 (чёт.)" }));
+  expect(screen.getByRole("button", { name: "чётная" }).getAttribute("aria-pressed")).toBe("true");
+});
+
+test("утверждение варианта с подтверждением", async () => {
+  const calls = mockApi({ draft: true });
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Утвердить" }));
+  await screen.findByText(/Вариант «Осень» утверждён/);
+  expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/variants/7/approve"))).toBe(true);
+  expect(screen.queryByRole("button", { name: "Утвердить" })).toBeNull();
+  expect(screen.getByText("✓ утверждён")).toBeTruthy();
+});
+
+test("пожелания преподавателя в его сетке: показать и изменить", async () => {
+  const calls = mockApi();
+  render(<App />);
+  await lesson();
+  fireEvent.click(screen.getByRole("button", { name: "Преподаватель" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Пожелания" }));
+  const sel = (await screen.findByRole("combobox", { name: "Пожелание: Пт, 1-я пара" })) as HTMLSelectElement;
+  await waitFor(() => expect(sel.value).toBe("-2"));
+  expect(cell("5-1").className).toContain("pref-2");
+  fireEvent.change(sel, { target: { value: "2" } });
+  await screen.findByText(/Пожелание сохранено/);
+  expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({ set: { "5-1": 2 } });
+  expect(cell("5-1").className).toContain("pref2");
+  expect((await lesson()).getAttribute("draggable")).toBe("false"); // в режиме пожеланий не перетаскиваем
 });

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from typing import Any
 
 from .criteria import LABELS, Crit, WeightProfile
 from .domain import (
@@ -34,6 +35,11 @@ WEEK_RU = {Week.ODD: "нечёт.", Week.EVEN: "чёт.", Week.BOTH: "ежене
 class Violation:
     code: str
     message: str
+    #: Где нарушение (для подсветки в интерфейсе): слот «день-пара», неделя (odd/even) и элементы
+    #: нагрузки. Пусто — нарушение не привязано к одной клетке (например, число пар за цикл).
+    slot: str | None = None
+    week: str | None = None
+    items: tuple[str, ...] = ()
 
 
 @dataclass
@@ -94,7 +100,13 @@ def validate(
     prof = profile or WeightProfile()
     rep = Report()
     grid = p.grid
-    hard = rep.hard.append
+    # место по умолчанию для нарушений, найденных при разборе одного события (слот, неделя, элементы)
+    at: dict[str, Any] = {}
+
+    def hard(v: Violation) -> None:
+        if v.slot is None and at:
+            v.slot, v.week, v.items = at["slot"], at["week"], at["items"]
+        rep.hard.append(v)
 
     # ------------------------------------------------ ссылки
     good: list[Assignment] = []
@@ -132,7 +144,9 @@ def validate(
         seen = Counter((a.slot_id, k) for a in got for k in weeks_of(a.week))
         for (sid, k), c in seen.items():
             if c > 1:
-                hard(Violation("dup", f"{name(it.id)}: {c} раза в {_sl(p, sid)} ({WEEK_RU[k]})"))
+                hard(
+                    Violation("dup", f"{name(it.id)}: {c} раза в {_sl(p, sid)} ({WEEK_RU[k]})", sid, k.value, (it.id,))
+                )
         if it.is_alt_week and got:
             wks = {a.week for a in got}
             if Week.BOTH in wks or len(wks) > 1:
@@ -142,7 +156,9 @@ def validate(
             for a in got:
                 if not any(b.week is a.week and _adjacent(p, a.slot_id, b.slot_id) for b in got):
                     kind = "через неделю" if it.is_alt_week else "сдвоенная"
-                    hard(Violation("consecutive", f"{name(it.id)} ({kind}): {_sl(p, a.slot_id)} без пары рядом"))
+                    msg = f"{name(it.id)} ({kind}): {_sl(p, a.slot_id)} без пары рядом"
+                    week = None if a.week is Week.BOTH else a.week.value
+                    hard(Violation("consecutive", msg, a.slot_id, week, (it.id,)))
 
     # ------------------------------------------------ события по (неделя, слот)
     events: dict[tuple[Week, str], list[_Event]] = defaultdict(list)
@@ -168,6 +184,7 @@ def validate(
     # ------------------------------------------------ аудитории
     for (k, sid), evs in events.items():
         for e in evs:
+            at.update(slot=sid, week=k.value, items=tuple(e.item_ids))
             items = [p.item_by_id[i] for i in e.item_ids]
             fmts = {(it.format, it.teacher_in_room) for it in items}
             if len(fmts) > 1:
@@ -241,31 +258,34 @@ def validate(
                 rep.warnings.append(
                     Violation("online_room", f"{name(e.item_ids[0])}: онлайн-занятию назначена аудитория")
                 )
+        at.clear()
         rooms = Counter(e.room_id for e in evs if e.room_id is not None and e.needs_room)
         for r, c in rooms.items():
             if c > 1:
-                hard(
-                    Violation(
-                        "room_conflict", f"Аудитория {p.room_by_id[r].name}: {c} занятия в {_sl(p, sid)} ({WEEK_RU[k]})"
-                    )
-                )
+                iids = tuple(i for e in evs if e.room_id == r and e.needs_room for i in e.item_ids)
+                msg = f"Аудитория {p.room_by_id[r].name}: {c} занятия в {_sl(p, sid)} ({WEEK_RU[k]})"
+                hard(Violation("room_conflict", msg, sid, k.value, iids))
 
     # ------------------------------------------------ преподаватели
     t_busy: dict[tuple[str, Week, str], int] = Counter()
+    t_items: dict[tuple[str, Week, str], list[str]] = defaultdict(list)
     t_onsite: set[tuple[str, Week, str]] = set()  # преподаватель на площадке (очно или дистант из аудитории)
     for (k, sid), evs in events.items():
         for e in evs:
             teachers = {t for i in e.item_ids for t in p.item_by_id[i].teacher_ids}
             for t in teachers:
                 t_busy[(t, k, sid)] += 1
+                t_items[(t, k, sid)] += e.item_ids
                 if e.needs_room:
                     t_onsite.add((t, k, sid))
     for (t, k, sid), c in t_busy.items():
         tn = p.teacher_by_id[t].name
         if c > 1:
-            hard(Violation("teacher_conflict", f"{tn}: {c} занятия в {_sl(p, sid)} ({WEEK_RU[k]})"))
+            msg = f"{tn}: {c} занятия в {_sl(p, sid)} ({WEEK_RU[k]})"
+            hard(Violation("teacher_conflict", msg, sid, k.value, tuple(t_items[(t, k, sid)])))
         if p.teacher_pref(t, sid) <= PREF_FORBIDDEN:
-            hard(Violation("teacher_forbidden", f"{tn} поставлен в {_sl(p, sid)}, где отмечено «не могу»"))
+            msg = f"{tn} поставлен в {_sl(p, sid)}, где отмечено «не могу»"
+            hard(Violation("teacher_forbidden", msg, sid, k.value, tuple(t_items[(t, k, sid)])))
 
     # ------------------------------------------------ группы и подгруппы (по «клеткам»)
     # cell_occ[(g, cell, k, sid)] = кто занимает клетку; все занятия одного
@@ -294,12 +314,18 @@ def validate(
     for (g, _c, k, sid), cnt in cell_busy.items():
         if cnt > 1 and (g, k, sid) not in reported:
             reported.add((g, k, sid))
-            hard(
-                Violation("group_conflict", f"Группа {p.group_by_id[g].name}: накладка в {_sl(p, sid)} ({WEEK_RU[k]})")
-            )
+            iids = tuple(i for e in g_busy.get((g, k, sid), []) for i in e.item_ids)
+            msg = f"Группа {p.group_by_id[g].name}: накладка в {_sl(p, sid)} ({WEEK_RU[k]})"
+            hard(Violation("group_conflict", msg, sid, k.value, iids))
     for g, sid in sorted({(g, sid) for g, _k, sid in g_busy}):
         if p.group_pref(g, sid) <= PREF_FORBIDDEN:
-            hard(Violation("group_forbidden", f"Группа {p.group_by_id[g].name} поставлена в запрещённый {_sl(p, sid)}"))
+            iids = tuple(
+                sorted(
+                    {i for (gg, _k, s), evs in g_busy.items() if (gg, s) == (g, sid) for e in evs for i in e.item_ids}
+                )
+            )
+            msg = f"Группа {p.group_by_id[g].name} поставлена в запрещённый {_sl(p, sid)}"
+            hard(Violation("group_forbidden", msg, sid, None, iids))
 
     # ------------------------------------------------ синхронные блоки
     for b in p.blocks:
@@ -313,7 +339,9 @@ def validate(
     for pin in p.pins:
         hit = [a for a in occ.get(pin.item_id, []) if a.week is pin.week and a.slot_id == pin.slot_id]
         if not hit:
-            hard(Violation("pin", f"Закрепление {name(pin.item_id)} → {_sl(p, pin.slot_id)} не соблюдено"))
+            msg = f"Закрепление {name(pin.item_id)} → {_sl(p, pin.slot_id)} не соблюдено"
+            week = None if pin.week is Week.BOTH else pin.week.value
+            hard(Violation("pin", msg, pin.slot_id, week, (pin.item_id,)))
         elif pin.room_id and all(a.room_id != pin.room_id for a in hit):
             hard(Violation("pin_room", f"Закрепление {name(pin.item_id)}: не та аудитория"))
 

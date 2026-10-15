@@ -1,5 +1,5 @@
 // Клиент API /api/v1/ — та же сессия, что у админки; для изменений — CSRF-токен из cookie.
-import type { CheckResult, Diff, Entity, Grid, Me, Move, Run, Semester, Variant, Week, Who } from "./types";
+import type { CheckResult, Diff, Entity, Grid, Me, Move, Prefs, Run, Semester, Variant, Week, Who } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -64,6 +64,10 @@ export const api = {
     request<Run>("POST", `/semesters/${semId}/runs`, { ...body, name_prefix: "Перенос" }),
   run: (id: number) => request<Run>("GET", `/runs/${id}`),
   cancelRun: (id: number) => request<Run>("POST", `/runs/${id}/cancel`),
+  approve: (variantId: number) => request<Variant>("POST", `/variants/${variantId}/approve`),
+  prefs: (semId: number, teacherId: number) => request<Prefs>("GET", `/semesters/${semId}/teachers/${teacherId}/prefs`),
+  setPref: (semId: number, teacherId: number, slot: string, value: number) =>
+    request<Prefs>("PATCH", `/semesters/${semId}/teachers/${teacherId}/prefs`, { set: { [slot]: value } }),
   diff: (variantId: number, against?: number) =>
     request<Diff>("GET", `/variants/${variantId}/diff?${q({ against })}`),
 };
