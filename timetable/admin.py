@@ -29,7 +29,7 @@ from scheduler.validator import validate
 from . import models as m
 from .services.problem import ProblemBuildError, build_problem, manual_items_status
 from .services.runs import RunConflict, active_run, enqueue, max_workers, request_cancel
-from .services.variants import default_preset, load_variant
+from .services.variants import ApproveError, approve_variant, default_preset, load_variant
 from .widgets import BusyGridField, BusyGridWidget, PrefGridField, PrefGridWidget, grid_for
 from .xlsx.references import export_references, import_references
 from .xlsx.workload import export_workload, import_workload
@@ -1727,15 +1727,11 @@ class ScheduleVariantAdmin(admin.ModelAdmin):
             messages.error(request, "Утвердить можно ровно один вариант")
             return
         v = queryset.get()
-        problem, sched = load_variant(v)
-        rep = validate(problem, sched)
-        if not rep.ok:
-            messages.error(request, f"Вариант нельзя утвердить: {len(rep.hard)} жёстких нарушений")
+        try:
+            approve_variant(v)
+        except ApproveError as e:
+            messages.error(request, str(e))
             return
-        with transaction.atomic():
-            m.ScheduleVariant.objects.filter(semester=v.semester, status="approved").update(status="draft")
-            v.status = "approved"
-            v.save(update_fields=["status"])
         messages.success(request, f"Утверждён «{v.name}»")
 
     @admin.action(description="Перепроверить независимым валидатором")

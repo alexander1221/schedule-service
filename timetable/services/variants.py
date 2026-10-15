@@ -116,6 +116,25 @@ def load_variant(v: m.ScheduleVariant) -> tuple[Problem, Schedule]:
     return problem, sched
 
 
+class ApproveError(Exception):
+    pass
+
+
+def approve_variant(v: m.ScheduleVariant) -> None:
+    """Утвердить вариант: остальные варианты семестра — в черновики. Вариант с жёсткими
+    нарушениями (по независимому валидатору) утвердить нельзя."""
+    problem, sched = load_variant(v)
+    rep = validate(problem, sched)
+    if not rep.ok:
+        raise ApproveError(f"Вариант нельзя утвердить: {len(rep.hard)} жёстких нарушений")
+    with transaction.atomic():
+        m.ScheduleVariant.objects.filter(semester=v.semester, status=m.ScheduleVariant.Status.APPROVED).exclude(
+            pk=v.pk
+        ).update(status=m.ScheduleVariant.Status.DRAFT)
+        v.status = m.ScheduleVariant.Status.APPROVED
+        v.save(update_fields=["status"])
+
+
 def run_and_save(
     sem: m.Semester,
     params: SolveParams,

@@ -23,6 +23,10 @@ django==6.1.2
 psycopg[binary]==3.3.6
 # openpyxl — чтение/запись xlsx (импорт и экспорт нагрузки и справочников).
 openpyxl==3.1.5
+# django-ninja 1.7.1 (2026-09-19) — API /api/v1/ (этап 5, по ТЗ): схемы и OpenAPI-документация из
+# аннотаций типов. Классификаторы Django до 6.1, Python до 3.14. Тянет pydantic 2 (+ pydantic-core
+# с готовыми колёсами для Windows/macOS/Linux).
+django-ninja==1.7.1
 
 # --- Сервер (этап 8) ---------------------------------------------------------
 # gunicorn 26.2.0 (2026-08-24, requires_python >= 3.10) — WSGI-сервер в Docker-образе. На Windows
@@ -31,7 +35,8 @@ gunicorn==26.2.0 ; sys_platform != "win32"
 
 # --- Не входит и почему ------------------------------------------------------
 # django-allauth — вход по коду сделан своими силами (accounts/codes.py, этап 7);
-# django-ninja (API) и Procrastinate (фоновые задачи) — этап 5; icalendar — .ics пишется
+# Procrastinate (фоновые задачи из ТЗ) — нужен PostgreSQL, а пилот на SQLite: очередь своя
+# (timetable/services/runs.py, 0.8.0); icalendar — .ics пишется
 # своим кодом (timetable/export/ics.py, ~150 строк, проверен парсером icalendar);
 # whitenoise — статику в продакшене раздаёт Caddy из общего тома.
 # dj-database-url не нужен: настройки БД читаются из нескольких переменных окружения.

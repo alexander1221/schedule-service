@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "accounts",
     "timetable",
     "portal",
+    "ninja",  # статика страницы документации API (/api/v1/docs) — раздаётся вместе с остальной
 ]
 
 MIDDLEWARE = [

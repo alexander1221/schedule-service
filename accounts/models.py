@@ -10,10 +10,15 @@ django-allauth) требует почту как идентификатор. Л�
 
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
+import secrets
 from typing import Any
 
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager["User"]):
@@ -98,3 +103,68 @@ class LoginCode(models.Model):
 
     def __str__(self) -> str:
         return f"{self.email} · {self.created_at:%d.%m %H:%M}"
+
+
+def _token_hash(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+class ApiToken(models.Model):
+    """Токен доступа к API (/api/v1/) для программ: MCP-сервер агента диспетчера, скрипты.
+
+    Хранится только SHA-256; сам токен показывается один раз при выпуске. Права — как у владельца
+    (роль «Диспетчер» и т. п.), владелец должен иметь доступ в админку (is_staff).
+    """
+
+    PREFIX = "rsp_"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="api_tokens", verbose_name="владелец"
+    )
+    name = models.CharField("для чего", max_length=100, help_text="например: «агент на компьютере диспетчера»")
+    key_hash = models.CharField(max_length=64, unique=True, editable=False)
+    prefix = models.CharField("начало токена", max_length=12, editable=False)
+    created_at = models.DateTimeField("выпущен", auto_now_add=True)
+    expires_at = models.DateTimeField("действует до", null=True, blank=True, help_text="пусто — бессрочно")
+    last_used_at = models.DateTimeField("последнее использование", null=True, blank=True, editable=False)
+    revoked_at = models.DateTimeField("отозван", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "токен API"
+        verbose_name_plural = "токены API"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.prefix}… · {self.name} · {self.user}"
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None and (self.expires_at is None or self.expires_at > timezone.now())
+
+    def set_new_key(self) -> str:
+        """Сгенерировать новый токен; вернуть его открытый текст (больше его нигде не будет)."""
+        raw = self.PREFIX + secrets.token_urlsafe(32)
+        self.key_hash, self.prefix = _token_hash(raw), raw[:12]
+        return raw
+
+    @classmethod
+    def issue(cls, user: Any, name: str, days: int | None = None) -> tuple[ApiToken, str]:
+        tok = cls(user=user, name=name)
+        if days:
+            tok.expires_at = timezone.now() + dt.timedelta(days=days)
+        raw = tok.set_new_key()
+        tok.save()
+        return tok, raw
+
+    @classmethod
+    def authenticate(cls, raw: str) -> Any | None:
+        """Открытый токен → пользователь (или None). Отметку «использован» пишем не чаще раза в минуту."""
+        if not raw.startswith(cls.PREFIX):
+            return None
+        tok = cls.objects.select_related("user").filter(key_hash=_token_hash(raw)).first()
+        if tok is None or not tok.is_active or not tok.user.is_active:
+            return None
+        now = timezone.now()
+        if tok.last_used_at is None or now - tok.last_used_at > dt.timedelta(minutes=1):
+            cls.objects.filter(pk=tok.pk).update(last_used_at=now)
+        return tok.user
