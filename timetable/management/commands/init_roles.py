@@ -21,6 +21,7 @@ TIMETABLE_MODELS = [
     "weightpreset",
     "schedulevariant",
     "scheduleassignment",
+    "solverun",
 ]
 
 

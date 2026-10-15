@@ -29,6 +29,6 @@ RUN useradd --system --home /app app \
 USER app
 EXPOSE 8000
 ENTRYPOINT ["deploy/entrypoint.sh"]
-# Решатель запускается командой manage.py solve_semester (docker compose exec web …), не в запросе,
+# Решатель считает отдельный сервис worker (manage.py solve_worker), не запрос к сайту,
 # поэтому таймаут gunicorn обычный.
 CMD ["gunicorn", "webapp.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "--access-logfile", "-", "--no-control-socket"]

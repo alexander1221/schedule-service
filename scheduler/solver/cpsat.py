@@ -26,9 +26,10 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,6 +56,39 @@ from .rooms import RoomAssignmentError, assign_rooms
 
 #: Сколько раз этап 2 может вернуть отсечение этапу 1 для одного варианта.
 MAX_ROOM_ROUNDS = 8
+
+
+def _stopped(params: SolveParams) -> bool:
+    return params.stop is not None and params.stop()
+
+
+def _solve(
+    solver: cp_model.CpSolver,
+    model: cp_model.CpModel,
+    stop: Callable[[], bool] | None,
+    cb: cp_model.CpSolverSolutionCallback | None = None,
+) -> Any:
+    """``solver.solve`` с остановкой по запросу: отдельный поток раз в 0,5 с опрашивает ``stop``
+    и вызывает ``stop_search`` (CP-SAT возвращает лучшее найденное к этому моменту)."""
+    if stop is None:
+        return solver.solve(model, cb)
+    if stop():
+        return cp_model.UNKNOWN
+    done = threading.Event()
+
+    def watch() -> None:
+        while not done.wait(0.5):
+            if stop():
+                solver.stop_search()  # повторяем, пока solve не вернётся: вызов до старта поиска теряется
+
+    t = threading.Thread(target=watch, name="cpsat-stop", daemon=True)
+    t.start()
+    try:
+        return solver.solve(model, cb)
+    finally:
+        done.set()
+        t.join()
+
 
 # Аннотации OR-Tools для линейных выражений перегружены numpy-типами и дают mypy
 # сотни ложных срабатываний; внутри модели выражения типизируем как Any.
@@ -123,6 +157,8 @@ class CpSatSolver:
             return b
 
         for v in range(params.variants):
+            if _stopped(params):
+                break
             t0 = time.monotonic()
             builder = make_builder()
             st, solver = builder.run(params, v, progress)
@@ -132,6 +168,8 @@ class CpSatSolver:
                 try:
                     with_rooms = assign_rooms(problem, builder.extract(solver), params.profile)
                 except RoomAssignmentError as e:
+                    if _stopped(params):
+                        break
                     rounds += 1
                     if rounds > MAX_ROOM_ROUNDS:
                         raise
@@ -182,7 +220,7 @@ class CpSatSolver:
             if v == 0:
                 if st == cp_model.INFEASIBLE:
                     result.status = Status.INFEASIBLE
-                    if params.diagnose:
+                    if params.diagnose and not _stopped(params):
                         result.diagnostics = diagnose(problem, params)
                 else:
                     result.status = Status.UNKNOWN
@@ -191,6 +229,10 @@ class CpSatSolver:
                         "Увеличьте лимит времени или ослабьте ограничения."
                     ]
             break  # следующий вариант не нашёлся — останавливаемся
+        result.stopped = _stopped(params)
+        if result.stopped and not result.variants:
+            result.status = Status.CANCELLED
+            result.diagnostics = ["Расчёт остановлен раньше, чем нашлось первое расписание."]
         return result
 
 
@@ -840,7 +882,7 @@ class _Builder:
             # пересборка: сначала пробуем достроить ровно эталон (если он ещё допустим —
             # мгновенно получаем полную подсказку и стартуем с нулём отличий)
             sol.parameters.fix_variables_to_their_hinted_value = fix_hint
-            st0 = sol.solve(self.m)
+            st0 = _solve(sol, self.m, params.stop)
             if st0 == cp_model.MODEL_INVALID:
                 raise RuntimeError("Модель CP-SAT некорректна — это ошибка в коде решателя: " + self.m.validate())
             return st0, sol
@@ -853,11 +895,14 @@ class _Builder:
         if fst == cp_model.INFEASIBLE:
             return fst, feas
         if fst in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            st, solver = fst, feas  # если оптимизацию остановят до первого решения — останется это
             self.m.clear_hints()
             self._hint_from(feas)
             if progress:
                 progress(Progress(variant + 1, "первое допустимое", feas.wall_time, 1, None, None))
         for li, lv in enumerate(levels):
+            if _stopped(params):
+                break
             obj = self._expr(lv)
             self.m.clear_objective()
             self.m.minimize(obj)
@@ -870,9 +915,9 @@ class _Builder:
             solver.parameters.log_search_progress = params.log_search
             stage = f"уровень {li + 1}/{len(levels)}" if len(levels) > 1 else "слоты"
             cb = _Callback(variant, stage, progress)
-            st = solver.solve(self.m, cb)
-            if st not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-                break
+            st = _solve(solver, self.m, params.stop, cb)
+            if st not in (cp_model.OPTIMAL, cp_model.FEASIBLE) or _stopped(params):
+                break  # при остановке — берём лучшее найденное на этом уровне
             if li < len(levels) - 1:
                 best = round(solver.objective_value)
                 self.m.add(obj <= best)

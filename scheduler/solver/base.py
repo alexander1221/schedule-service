@@ -23,6 +23,7 @@ class Status(StrEnum):
     INFEASIBLE = "infeasible"  # доказано, что решения нет
     UNKNOWN = "unknown"  # за отведённое время не найдено ничего
     PRECHECK_FAILED = "precheck_failed"  # быстрые проверки нашли противоречие до запуска
+    CANCELLED = "cancelled"  # остановлено по запросу раньше, чем нашлось первое расписание
 
 
 @dataclass
@@ -40,6 +41,10 @@ class SolveParams:
     diagnose: bool = True
     diagnose_time_s: float = 30.0
     log_search: bool = False
+    #: Запрос остановки: опрашивается примерно раз в 0,5 с из отдельного потока (должен быть
+    #: потокобезопасным, например ``threading.Event().is_set``). Найденное к этому моменту
+    #: сохраняется: текущий вариант доводится до аудиторий, следующие не строятся.
+    stop: Callable[[], bool] | None = None
 
 
 @dataclass
@@ -81,6 +86,8 @@ class SolveResult:
     precheck: list[Finding] = field(default_factory=list)
     #: Человекочитаемое объяснение неразрешимости.
     diagnostics: list[str] = field(default_factory=list)
+    #: Расчёт остановлен по запросу (``SolveParams.stop``) — вариантов может быть меньше заказанных.
+    stopped: bool = False
 
 
 class Solver(Protocol):

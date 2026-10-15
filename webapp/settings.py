@@ -115,6 +115,9 @@ elif DB_ENGINE == "sqlite":
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": os.environ.get("DB_NAME", str(DATA_DIR / "dev.sqlite3")),
+            # сайт и обработчик расчётов пишут в один файл: WAL не блокирует чтение на время
+            # записи, timeout — ждать чужую запись, а не падать с «database is locked»
+            "OPTIONS": {"timeout": 20, "init_command": "PRAGMA journal_mode=WAL;"},
         }
     }
 else:
@@ -163,6 +166,10 @@ else:  # разработка: письмо с кодом печатается �
 DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL", os.environ.get("EMAIL_HOST_USER", "") or "raspisanie@localhost"
 )
+
+# Расчёт расписания (manage.py solve_worker): больше этого числа ядер решателю не дадим, чтобы
+# сайт на том же сервере не тормозил. По умолчанию — все ядра, кроме одного.
+SOLVER_MAX_WORKERS = max(1, int(os.environ.get("SOLVER_MAX_WORKERS", "0")) or (os.cpu_count() or 2) - 1)
 
 STATIC_URL = "static/"
 STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))

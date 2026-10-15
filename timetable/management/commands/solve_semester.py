@@ -1,14 +1,15 @@
-"""Построить варианты расписания семестра и сохранить их в БД (синхронно; фон — этап 5)."""
+"""Построить варианты расписания семестра в этом окне (без очереди) и сохранить их в БД.
+
+Запуск попадает в общую историю «Запуски расчёта» и тоже не даёт считать семестр дважды одновременно.
+"""
 
 import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from scheduler.solver import SolveParams
-from scheduler.solver.base import Status
 from timetable import models as m
-from timetable.services.problem import ProblemBuildError
-from timetable.services.variants import default_preset, load_variant, profile_from_preset, run_and_save
+from timetable.services.runs import RunConflict, enqueue, execute
+from timetable.services.variants import default_preset, profile_from_preset
 
 from .export_problem import get_semester
 
@@ -40,44 +41,30 @@ class Command(BaseCommand):
             v = m.ScheduleVariant.objects.filter(pk=o["reference_variant"], semester=sem).first()
             if v is None:
                 raise CommandError("Эталонный вариант не найден в этом семестре")
-            reference = load_variant(v)[1]
-        params = SolveParams(
-            time_limit_s=o["time"],
-            workers=o["workers"],
-            seed=o["seed"],
-            variants=o["variants"],
-            min_diff=o["min_diff"],
-            profile=profile_from_preset(preset),
-            reference=reference,
-        )
-
-        last: dict[tuple[int, str], tuple[float, float]] = {}
-
-        def progress(pr):
-            # печатаем заметные улучшения (≥5%) и не реже раза в 30 с — чтобы по
-            # консоли было видно, когда на самом деле пришло последнее улучшение
-            key = (pr.variant, pr.stage)
-            if pr.objective is None:
-                self.stdout.write(f"  вариант {pr.variant} [{pr.stage}] {pr.elapsed_s:.0f} с")
-                return
-            prev = last.get(key)
-            if prev is None or pr.objective < prev[0] - max(1.0, abs(prev[0]) * 0.05) or pr.elapsed_s - prev[1] >= 30:
-                last[key] = (pr.objective, pr.elapsed_s)
-                self.stdout.write(
-                    f"  вариант {pr.variant} [{pr.stage}] {pr.elapsed_s:.0f} с: "
-                    f"оценка штрафа по слотам {pr.objective:.0f}"
-                )
-
+            reference = v
         try:
-            result, saved = run_and_save(sem, params, progress=progress)
-        except ProblemBuildError as e:
-            raise CommandError(str(e)) from e
-        if result.status in (Status.PRECHECK_FAILED, Status.INFEASIBLE, Status.UNKNOWN):
-            for line in result.diagnostics:
+            run = enqueue(
+                sem,
+                time_limit_s=o["time"],
+                variants=o["variants"],
+                workers=o["workers"],
+                seed=o["seed"],
+                min_diff=o["min_diff"],
+                preset=preset,
+                reference=reference,
+                start_now=True,
+            )
+        except RunConflict as e:
+            raise CommandError(f"{e} (запуск №{e.active.pk if e.active else '?'})") from e
+        self.stdout.write(f"Расчёт №{run.pk} (виден в админке: «Запуски расчёта»); Ctrl+C — прервать")
+        _, saved = execute(run, echo=self.stdout.write)
+        if not saved:
+            for line in run.message.splitlines():
                 self.stdout.write(self.style.ERROR(line))
-            raise CommandError(f"Расписание не построено: {result.status.value}")
+            raise CommandError(f"Расписание не построено: {run.get_status_display()}")
+        profile = profile_from_preset(preset)
         for v in saved:
-            rooms = _room_part(v.breakdown, params.profile)
+            rooms = _room_part(v.breakdown, profile)
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Сохранён «{v.name}» (id={v.pk}): штраф {v.total} = расстановка по слотам "

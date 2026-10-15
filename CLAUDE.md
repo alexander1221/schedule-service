@@ -1,11 +1,11 @@
 # CLAUDE.md — память проекта для Claude Code
 
 Сервис автоматического составления семестрового расписания колледжа (кафедры **Кино** и **ПиУП**,
-площадка ВДНХ). Текущая версия — `scheduler/__init__.py` (на момент передачи **0.7.0**). Исходное ТЗ
+площадка ВДНХ). Текущая версия — `scheduler/__init__.py` (сейчас **0.8.0**). Исходное ТЗ
 на русском: этапы §13 — 1) домен+генератор+валидатор, 2) решатель, 3) варианты/закрепления/
 пересборка/диагностика, 4) Django-модели/админка/xlsx, 5) фоновый запуск + API, 6) UI диспетчера
 (React+TS, drag&drop), 7) форма преподавателя + вход по почте, 8) экспорт/развёртывание/документы.
-**Готовы 1–4, 7, 8. Остались 5 и 6.** Сверх ТЗ запланирован этап 5б — MCP-сервер для ИИ-агента
+**Готовы 1–4, 7, 8 и первая часть 5 (фоновый расчёт, 0.8.0). Остались API (вторая часть 5) и 6.** Сверх ТЗ запланирован этап 5б — MCP-сервер для ИИ-агента
 диспетчера (см. «Что дальше»).
 
 Пользователь — заказчик со стороны колледжа (не разработчик-профессионал, но технически грамотный,
@@ -24,7 +24,8 @@ python -m ruff check . && python -m ruff format --check .
 python -m mypy                               # строго только пакет scheduler (так настроено)
 python manage.py makemigrations --check --dry-run
 python manage.py runserver                   # /admin/ — диспетчер, /login/ — вход по коду, /me/ — преподаватель
-python manage.py solve_semester <id> --time 300 --variants 3 [--workers 8] [--reference-variant <id>]
+python manage.py solve_worker                # обработчик очереди расчётов (кнопка «Построить расписание»)
+python manage.py solve_semester <id> --time 300 --variants 3 [--workers 8] [--reference-variant <id>]  # в окне, без очереди
 python manage.py draft_from_schedule <текущее.xlsx> -o <папка>   # черновики из файла расписания учебного отдела
 python manage.py test_email <адрес>          # проверка почты
 ```
@@ -46,15 +47,16 @@ python manage.py test_email <адрес>          # проверка почты
 | `timetable/models.py` | Django-модели (Semester, Course, Group, Teacher, Site, Room, WorkloadItem, Pin, SyncBlock, MergeGroup, WeightPreset, ScheduleVariant c JSONB-снимком задачи, …) |
 | `timetable/services/problem.py` | `build_problem(sem)` БД → домен (число запросов постоянно), `import_problem`, `create_semester`, `add_default_courses` |
 | `timetable/services/variants.py` | `run_and_save`, `save_variant`, `load_variant` (вариант живёт по своему снимку задачи) |
+| `timetable/services/runs.py` | фоновые расчёты: `enqueue` (RunConflict), `claim_next` (условный UPDATE), `execute` (поток `_Reporter` пишет прогресс/журнал/отклик раз в 2 с и читает флажок остановки), `request_cancel`, `recover_stale` (2 мин без отклика → «не построено»), `ProgressLog` |
 | `timetable/services/views.py` | сетки группа/преподаватель/аудитория, `free_rooms` |
-| `timetable/admin.py` | вся админка: импорт/экспорт xlsx, проверка, черновик, «Пожелания», сетки, часы к табелю, Excel ⇣, .ics |
+| `timetable/admin.py` | вся админка: импорт/экспорт xlsx, проверка, черновик, «Пожелания», сетки, часы к табелю, Excel ⇣, .ics; «Построить расписание» (`SolveForm`, `solve_view`) и `SolveRunAdmin` (страница хода с автообновлением, «Остановить») |
 | `timetable/xlsx/` | шаблоны справочников и нагрузки (импорт с «только проверить», ошибки с № строки/колонки; отсутствующие новые колонки не трогают значения) |
 | `timetable/importers/` | разбор реального файла расписания учебного отдела → черновики (`current_schedule.py`, `draft_writer.py`) |
 | `timetable/export/` | `schedule_xlsx.py` (выгрузка варианта), `ics.py` (календарь RFC 5545, свой код) |
 | `accounts/` | User (вход по почте, без username), AllowedEmail (белый список с ролью), LoginCode, `codes.py` — вход по коду |
 | `portal/` | `/login/`, `/login/code/`, `/me/` (пожелания −2…+2, нагрузка, расписание, календарь), подписка `/calendar/<token>.ics` |
 | `webapp/settings.py` | всё из окружения + файл `.env` (свой разбор); почта через `MAILERS` (Django 6.1) |
-| `Dockerfile`, `docker-compose.yml`, `deploy/` | gunicorn + PostgreSQL 16 + Caddy (HTTPS, статика); `backup.sh`/`restore.sh` |
+| `Dockerfile`, `docker-compose.yml`, `deploy/` | gunicorn + `worker` (solve_worker) + PostgreSQL 16 + Caddy (HTTPS, статика); `backup.sh`/`restore.sh` |
 | `docs/` | ARCHITECTURE, WEB, XLSX_FORMAT, OPEN_QUESTIONS, DEPLOY (админу), GUIDE (диспетчеру), TROUBLESHOOTING |
 
 ## Инварианты — не ломать
@@ -71,6 +73,10 @@ python manage.py test_email <адрес>          # проверка почты
 5. **Чистый домен**: `scheduler/` не знает про Django. Всё Django — в `timetable/`, `accounts/`, `portal/`.
 6. **Вариант читается по своему снимку** (`problem_snapshot` JSONB), а не по текущим справочникам.
 7. **Импорт xlsx атомарен**: при любой ошибке в файле ничего не записывается; режим «только проверить».
+8. **Один активный расчёт на семестр** — частичное уникальное ограничение в БД, а не проверка в коде.
+   Любой запуск (кнопка, `solve_semester`, будущий API) идёт через `services.runs.enqueue`.
+9. **Остановка сохраняет найденное**: `SolveParams.stop` → текущий вариант доводится до аудиторий и
+   проходит валидатор; новые места решателя, где идёт поиск, — через `_solve(...)`, иначе остановка их не прервёт.
 
 ## Правила работы
 
@@ -134,14 +140,13 @@ python manage.py test_email <адрес>          # проверка почты
 ## Что дальше
 
 ### Этап 5 — фоновый запуск и API
-- Кнопка «Построить расписание» в админке (семестр, пресет, время, число вариантов, эталон для пересборки).
-- Очередь задач: **Procrastinate** (по ТЗ; работает на PostgreSQL, без Redis) — проверить совместимость
-  версии с Django 6.1 и Python 3.12–3.13; для SQLite-разработки нужен простой режим (синхронный запуск
-  или отдельный процесс). Воркер — отдельный сервис в `docker-compose.yml`.
-- Прогресс в БД (модель запуска: статус, текущий штраф, время, лог), страница с автообновлением,
-  отмена (CP-SAT: `stop_search` из колбэка), защита от двух одновременных расчётов семестра.
-- API: **django-ninja** (по ТЗ) — варианты, сетки, проверки, запуск; авторизация сессией + права ролей.
-- Решателю отдавать не больше `--workers` ядер, не душить gunicorn.
+- **Готово в 0.8.0:** кнопка «Построить расписание», очередь в БД (`SolveRun`, своя — не Procrastinate:
+  тот только для PostgreSQL, решение заказчика), обработчик `solve_worker` / контейнер `worker`,
+  страница хода с автообновлением и остановкой, защита от двух расчётов семестра, `SOLVER_MAX_WORKERS`.
+- **Осталось — API: django-ninja** (1.7.1 поддерживает Django 6.1; тянет pydantic 2) — варианты, сетки,
+  проверки, запуск/статус/остановка расчёта через `services.runs`; авторизация сессией (+ CSRF) и
+  права ролей; эндпоинты сразу удобные и для MCP (этап 5б). Новая зависимость — в requirements.txt,
+  pyproject и lock-файлы.
 
 ### Этап 5б — MCP-сервер для агента диспетчера (сверх ТЗ, после этапа 5)
 Цель: диспетчер даёт ИИ-агенту на своём компьютере поручение словами («с ноября преподавателю
@@ -186,3 +191,9 @@ python manage.py test_email <адрес>          # проверка почты
 - gunicorn ≥ 25.1 создаёт управляющий сокет в `$HOME/.gunicorn` → в образе `--no-control-socket`.
 - Тестовый клиент Django в ручных скриптах — `Client(HTTP_HOST="localhost")` (ALLOWED_HOSTS).
 - Кириллица в путях Windows и BOM: `.env` читается как `utf-8-sig`.
+- Прогресс CP-SAT приходит из потоков решателя — там никакого ORM; в БД пишет один поток `_Reporter`
+  со своим соединением (закрывает его сам). Тесты с этим потоком — `django_db(transaction=True)`.
+- Ctrl+C (SIGINT) во время `solve` перехватывает сам CP-SAT (`catch_sigint_signal`): поиск заканчивается
+  как по лимиту времени, KeyboardInterrupt не возникает, следующие solve тоже сразу выходят (проверено
+  0.8.0). SIGTERM Python обработает только после выхода из C++ `solve` → `docker stop` посреди расчёта
+  ждёт `stop_grace_period` и убивает; прерванный запуск подберёт `recover_stale`.

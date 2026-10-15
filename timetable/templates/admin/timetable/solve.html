@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_semester_changelist' %}">Семестры</a> › <a href="{% url 'admin:timetable_semester_change' semester.pk %}">{{ semester }}</a> › Построить расписание</div>{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if active %}
+<ul class="messagelist"><li class="warning">Для этого семестра уже идёт расчёт:
+  <a href="{% url 'admin:timetable_solverun_change' active.pk %}">{{ active }}</a>. Новый можно поставить, когда он закончится или будет остановлен.</li></ul>
+{% endif %}
+<p>Расчёт идёт в фоне: страницу можно закрыть и вернуться позже — ход виден в разделе
+  <a href="{% url 'admin:timetable_solverun_changelist' %}?semester__id__exact={{ semester.pk }}">«Запуски расчёта»</a>.
+  Перед первым расчётом полезно <a href="{% url 'admin:timetable_semester_precheck' semester.pk %}">проверить задачу</a>.</p>
+<form method="post">{% csrf_token %}
+<fieldset class="module aligned">
+{% for field in form %}
+  <div class="form-row{% if field.errors %} errors{% endif %}">
+    {{ field.errors }}
+    <div><label for="{{ field.id_for_label }}"{% if field.field.required %} class="required"{% endif %}>{{ field.label }}:</label> {{ field }}
+    {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}</div>
+  </div>
+{% endfor %}
+</fieldset>
+<p>Общее время ≈ время на вариант × число вариантов (плюс минута-другая на подбор аудиторий).
+  Остановить можно в любой момент — найденное к этому моменту сохранится.</p>
+<div class="submit-row"><input type="submit" class="default" value="Построить расписание"{% if active %} disabled{% endif %}></div>
+</form>
+{% if recent %}
+<h2>Последние запуски семестра</h2>
+<ul>{% for r in recent %}<li><a href="{% url 'admin:timetable_solverun_change' r.pk %}">№{{ r.pk }}</a> — {{ r.get_status_display }}, {{ r.created_at|date:"d.m.Y H:i" }}{% if r.created_by %}, {{ r.created_by }}{% endif %}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "admin/base_site.html" %}
+{% block extrahead %}{{ block.super }}{% if refresh %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:timetable_solverun_changelist' %}">Запуски расчёта</a> › №{{ run.pk }}</div>{% endblock %}
+{% block content %}
+<h1>Расчёт №{{ run.pk }}: {{ run.semester }}</h1>
+<p><b>Состояние: {{ run.get_status_display }}</b>{% if run.is_active and run.cancel_requested %} — остановка запрошена, сохраняется найденное…{% endif %}
+{% if refresh %}<span class="help">(страница обновляется сама)</span>{% endif %}</p>
+
+{% if queue_pos is not None %}
+  <p>{% if queue_pos %}Перед ним в очереди: {{ queue_pos }}.{% else %}Следующий в очереди.{% endif %}</p>
+  {% if queued_long %}<ul class="messagelist"><li class="warning">Расчёт долго не начинается — похоже, не запущен обработчик расчётов.
+    На своём компьютере откройте второе окно и выполните <code>python manage.py solve_worker</code>;
+    на сервере проверьте сервис <code>worker</code> (<code>docker compose ps</code>). Подробно — docs/GUIDE.md.</li></ul>{% endif %}
+{% endif %}
+
+{% if run.status == "running" %}
+  {% if percent is not None %}<p><progress max="100" value="{{ percent }}" style="width:100%;max-width:40em"></progress><br>
+    <span class="help">Прошло {{ elapsed_min|floatformat:1 }} мин из примерно {{ budget_min|floatformat:0 }} (по лимиту времени).</span></p>{% endif %}
+  {% if p %}<table><tbody>
+    <tr><th>Вариант</th><td>{{ p.variant }} из {{ p.of }}</td></tr>
+    <tr><th>Этап</th><td>{{ p.stage }}</td></tr>
+    {% if p.objective is not None %}<tr><th>Текущая оценка штрафа</th><td>{{ p.objective|floatformat:0 }} <span class="help">(по слотам, без выбора аудиторий; чем меньше, тем лучше)</span></td></tr>{% endif %}
+    {% if p.bound is not None %}<tr><th>Лучше быть не может, чем</th><td>{{ p.bound|floatformat:0 }}</td></tr>{% endif %}
+  </tbody></table>{% else %}<p>Собираю задачу и ищу первое допустимое расписание…</p>{% endif %}
+  {% if silent_s and silent_s > 30 %}<ul class="messagelist"><li class="warning">Обработчик не отвечает {{ silent_s|floatformat:0 }} с. Если так больше двух минут — расчёт будет отмечен как прерванный.</li></ul>{% endif %}
+{% endif %}
+
+{% if run.message %}<ul class="messagelist"><li class="{% if run.status == 'done' %}success{% elif run.status == 'failed' %}error{% else %}warning{% endif %}" style="white-space:pre-line">{{ run.message }}</li></ul>{% endif %}
+
+{% if can_cancel %}
+<form method="post" action="{% url 'admin:timetable_solverun_cancel' run.pk %}">{% csrf_token %}
+  <input type="submit" value="{% if run.status == 'queued' %}Снять с очереди{% else %}Остановить и сохранить найденное{% endif %}"{% if run.cancel_requested %} disabled{% endif %}>
+</form>
+{% endif %}
+
+{% if variants %}
+<h2>Варианты</h2>
+<table><thead><tr><th>Вариант</th><th>Штраф</th>{% if run.reference %}<th>Изменений от эталона</th>{% endif %}<th>Статус решателя</th><th></th></tr></thead><tbody>
+{% for v in variants %}<tr>
+  <td><a href="{% url 'admin:timetable_schedulevariant_change' v.pk %}">{{ v.name }}</a></td>
+  <td>{{ v.total }}</td>{% if run.reference %}<td>{{ v.params.changes|default_if_none:"—" }}</td>{% endif %}<td>{{ v.solver_status }}</td>
+  <td><a href="{% url 'admin:timetable_variant_grid' v.pk %}">расписание</a> · <a href="{% url 'admin:timetable_variant_export' v.pk %}">Excel ⇣</a></td>
+</tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+<h2>Параметры</h2>
+<table><tbody>
+  <tr><th>Поставлен</th><td>{{ run.created_at|date:"d.m.Y H:i:s" }}{% if run.created_by %}, {{ run.created_by }}{% endif %}</td></tr>
+  {% if run.started_at %}<tr><th>Начат</th><td>{{ run.started_at|date:"d.m.Y H:i:s" }}</td></tr>{% endif %}
+  {% if run.finished_at %}<tr><th>Закончен</th><td>{{ run.finished_at|date:"d.m.Y H:i:s" }} ({{ elapsed_min|floatformat:1 }} мин)</td></tr>{% endif %}
+  <tr><th>Вариантов</th><td>{{ run.variants_requested }}</td></tr>
+  <tr><th>Время на вариант</th><td>{{ run.time_limit_s|floatformat:0 }} с</td></tr>
+  <tr><th>Пресет весов</th><td>{{ run.preset|default:"по умолчанию" }}</td></tr>
+  <tr><th>Пересборка от</th><td>{% if run.reference %}<a href="{% url 'admin:timetable_schedulevariant_change' run.reference.pk %}">{{ run.reference }}</a>{% else %}нет — с нуля{% endif %}</td></tr>
+  <tr><th>Ядер</th><td>{{ run.workers }}</td></tr>
+  <tr><th>Мин. отличий / seed</th><td>{{ run.min_diff }} / {{ run.seed }}</td></tr>
+</tbody></table>
+
+{% if run.log %}<h2>Журнал</h2><pre style="white-space:pre-wrap;max-height:30em;overflow:auto">{{ run.log }}</pre>{% endif %}
+<p><a class="button" href="{% url 'admin:timetable_semester_solve' run.semester.pk %}">Новый расчёт этого семестра</a></p>
+{% endblock %}

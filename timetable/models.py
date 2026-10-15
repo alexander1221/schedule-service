@@ -719,6 +719,14 @@ class ScheduleVariant(models.Model):
     objective = models.FloatField("целевая функция решателя", null=True, blank=True)
     wall_time_s = models.FloatField("время, с", null=True, blank=True)
     note = models.TextField("заметки", blank=True)
+    run = models.ForeignKey(
+        "SolveRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="variants",
+        verbose_name="запуск расчёта",
+    )
 
     class Meta:
         verbose_name = "вариант расписания"
@@ -760,3 +768,87 @@ class ScheduleAssignment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.item_key} → {DAY_NAMES.get(self.day, self.day)} {self.pair} ({self.week})"
+
+
+class SolveRun(models.Model):
+    """Запуск расчёта: очередь, прогресс и итог (этап 5).
+
+    Очередь — сама эта таблица: кнопка в админке создаёт запись «в очереди», обработчик
+    (``manage.py solve_worker``) забирает её, считает и пишет прогресс сюда же. Одинаково
+    работает на SQLite и PostgreSQL, без отдельного сервера очередей.
+    """
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "в очереди"
+        RUNNING = "running", "считается"
+        DONE = "done", "готово"
+        FAILED = "failed", "не построено"
+        CANCELLED = "cancelled", "остановлено"
+
+    ACTIVE = (Status.QUEUED, Status.RUNNING)
+
+    semester = models.ForeignKey(Semester, on_delete=models.CASCADE, related_name="runs", verbose_name="семестр")
+    status = models.CharField("состояние", max_length=10, choices=Status.choices, default=Status.QUEUED)
+    created_at = models.DateTimeField("поставлен", auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="кто запустил"
+    )
+    started_at = models.DateTimeField("начат", null=True, blank=True)
+    finished_at = models.DateTimeField("закончен", null=True, blank=True)
+    #: Обработчик обновляет раз в несколько секунд; давно не обновлялось — обработчик остановлен.
+    heartbeat_at = models.DateTimeField("последний отклик", null=True, blank=True)
+
+    # параметры
+    time_limit_s = models.FloatField("время на вариант, с", default=300)
+    variants_requested = models.PositiveSmallIntegerField("вариантов", default=3)
+    workers = models.PositiveSmallIntegerField("ядер", default=4)
+    seed = models.IntegerField("seed", default=0)
+    min_diff = models.PositiveIntegerField("мин. отличий между вариантами", default=10)
+    preset = models.ForeignKey(
+        WeightPreset, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="пресет весов"
+    )
+    reference = models.ForeignKey(
+        ScheduleVariant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="пересборка от варианта",
+    )
+    name_prefix = models.CharField("название вариантов", max_length=100, default="Вариант")
+
+    # ход и итог
+    cancel_requested = models.BooleanField("запрошена остановка", default=False)
+    progress = models.JSONField("прогресс", default=dict, blank=True)
+    log = models.TextField("журнал", blank=True)
+    message = models.TextField("итог", blank=True)
+    solver_status = models.CharField("статус решателя", max_length=20, blank=True)
+
+    class Meta:
+        verbose_name = "запуск расчёта"
+        verbose_name_plural = "запуски расчёта"
+        ordering = ["-created_at"]
+        constraints = [
+            # защита от двух одновременных расчётов одного семестра
+            models.UniqueConstraint(
+                fields=["semester"],
+                condition=models.Q(status__in=["queued", "running"]),
+                name="one_active_run_per_semester",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Расчёт №{self.pk} · {self.semester} · {self.get_status_display()}"
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in self.ACTIVE
+
+    @property
+    def elapsed_s(self) -> float | None:
+        if self.started_at is None:
+            return None
+        from django.utils import timezone
+
+        end = self.finished_at or timezone.now()
+        return (end - self.started_at).total_seconds()

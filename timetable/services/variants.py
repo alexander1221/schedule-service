@@ -1,7 +1,7 @@
 """Запуск решателя для семестра и хранение вариантов в БД.
 
-Сейчас запуск синхронный (команда ``manage.py solve_semester``); на этапе 5 тот же
-``run_and_save`` вызовет фоновая задача, а прогресс пойдёт в БД через ``progress``.
+``run_and_save`` вызывают обработчик фоновых расчётов и ``manage.py solve_semester``
+(через ``services.runs.execute``); прогресс приходит в ``progress``.
 """
 
 from __future__ import annotations
@@ -62,6 +62,7 @@ def save_variant(
     objective: float | None = None,
     wall_time_s: float | None = None,
     profile: WeightProfile | None = None,
+    run: m.SolveRun | None = None,
 ) -> m.ScheduleVariant:
     rep = report or validate(problem, schedule, profile)
     v = m.ScheduleVariant.objects.create(
@@ -76,6 +77,7 @@ def save_variant(
         total=rep.total,
         objective=objective,
         wall_time_s=wall_time_s,
+        run=run,
     )
     existing_items = set(m.WorkloadItem.objects.filter(semester=sem).values_list("pk", flat=True))
     existing_rooms = set(m.Room.objects.values_list("pk", flat=True))
@@ -121,6 +123,7 @@ def run_and_save(
     name_prefix: str = "Вариант",
     user: Any = None,
     progress: ProgressCallback | None = None,
+    run: m.SolveRun | None = None,
 ) -> tuple[SolveResult, list[m.ScheduleVariant]]:
     problem = build_problem(sem)
     result = CpSatSolver().solve(problem, params, progress)
@@ -141,11 +144,16 @@ def run_and_save(
                     "min_diff": params.min_diff,
                     "profile": params.profile.name,
                     "mode": params.profile.mode.value,
+                    "reference": bool(params.reference),
+                    "stopped": result.stopped,
+                    # пересборка: сколько назначений отличается от эталона (в штраф варианта не входит)
+                    **({"changes": var.breakdown.get(Crit.CHANGES, 0)} if params.reference else {}),
                 },
                 solver_status=var.status.value,
                 objective=var.objective,
                 wall_time_s=var.wall_time_s,
                 profile=params.profile,
+                run=run,
             )
         )
     return result, saved

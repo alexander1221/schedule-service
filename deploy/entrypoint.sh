@@ -1,5 +1,6 @@
 #!/bin/sh
-# Запуск контейнера web: дождаться БД, применить миграции и роли, собрать статику, стартовать.
+# Запуск контейнеров web и worker: дождаться БД, применить миграции и роли, собрать статику
+# (worker пропускает это: SKIP_MIGRATE=1, SKIP_COLLECTSTATIC=1), стартовать.
 set -e
 
 if [ "${DB_ENGINE:-sqlite}" = "postgres" ]; then
@@ -28,5 +29,7 @@ if [ "${SKIP_MIGRATE:-0}" != "1" ]; then
   python manage.py migrate --noinput
   python manage.py init_roles
 fi
-python manage.py collectstatic --noinput --verbosity 0
+if [ "${SKIP_COLLECTSTATIC:-0}" != "1" ]; then
+  python manage.py collectstatic --noinput --verbosity 0
+fi
 exec "$@"

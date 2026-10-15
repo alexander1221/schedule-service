@@ -11,6 +11,7 @@ from typing import Any
 
 from django import forms
 from django.contrib import admin, messages
+from django.core.validators import MaxValueValidator
 from django.db import transaction
 from django.db.models import Count, QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
@@ -27,7 +28,8 @@ from scheduler.validator import validate
 
 from . import models as m
 from .services.problem import ProblemBuildError, build_problem, manual_items_status
-from .services.variants import load_variant
+from .services.runs import RunConflict, active_run, enqueue, max_workers, request_cancel
+from .services.variants import default_preset, load_variant
 from .widgets import BusyGridField, BusyGridWidget, PrefGridField, PrefGridWidget, grid_for
 from .xlsx.references import export_references, import_references
 from .xlsx.workload import export_workload, import_workload
@@ -111,6 +113,48 @@ class ReferencesImportForm(forms.Form):
     dry_run = forms.BooleanField(label="Только проверить, ничего не записывать", required=False, initial=True)
 
 
+class SolveForm(forms.Form):
+    minutes = forms.FloatField(
+        label="Время на один вариант, мин",
+        min_value=0.5,
+        max_value=120,
+        initial=5,
+        help_text="Чем больше, тем лучше расписание. Для семестра колледжа разумно 3–10 минут.",
+    )
+    variants = forms.IntegerField(label="Сколько вариантов", min_value=1, max_value=10, initial=3)
+    preset = forms.ModelChoiceField(
+        m.WeightPreset.objects.all(), required=False, label="Пресет весов", empty_label="отмеченный «по умолчанию»"
+    )
+    reference = forms.ModelChoiceField(
+        m.ScheduleVariant.objects.none(),
+        required=False,
+        label="Пересобрать от варианта",
+        empty_label="нет — строить с нуля",
+        help_text="Новое расписание будет как можно ближе к выбранному: меняется только то, что нужно "
+        "(новые пожелания, закрепления, правки нагрузки).",
+    )
+    name_prefix = forms.CharField(label="Название вариантов", max_length=80, initial="Вариант")
+    workers = forms.IntegerField(label="Ядер процессора", min_value=1)
+    min_diff = forms.IntegerField(
+        label="Варианты отличаются хотя бы на, пар", min_value=0, initial=10, help_text="Обычно менять не нужно."
+    )
+    seed = forms.IntegerField(
+        label="Seed", initial=0, help_text="Другое число — другой путь поиска при тех же данных. Обычно 0."
+    )
+
+    def __init__(self, sem: m.Semester, *args: Any, **kw: Any) -> None:
+        super().__init__(*args, **kw)
+        f = self.fields
+        f["reference"].queryset = sem.variants.order_by("status", "-created_at")  # type: ignore[attr-defined]
+        approved = sem.variants.filter(status=m.ScheduleVariant.Status.APPROVED).first()
+        f["reference"].help_text += f" Утверждённый сейчас: «{approved.name}»." if approved else ""
+        f["workers"].max_value = max_workers()
+        f["workers"].initial = max_workers()
+        f["workers"].validators.append(MaxValueValidator(max_workers()))
+        f["workers"].help_text = f"Не больше {max_workers()} — остальное оставлено сайту (SOLVER_MAX_WORKERS)."
+        f["preset"].initial = default_preset()
+
+
 @admin.register(m.Semester)
 class SemesterAdmin(admin.ModelAdmin):
     list_display = ["name", "start_date", "first_week", "saturday", "status", "n_groups", "n_items", "tools"]
@@ -158,6 +202,7 @@ class SemesterAdmin(admin.ModelAdmin):
     @admin.display(description="действия")
     def tools(self, obj: m.Semester) -> str:
         links = [
+            ("Построить расписание", "admin:timetable_semester_solve"),
             ("Проверить", "admin:timetable_semester_precheck"),
             ("Нагрузка ⇣xlsx", "admin:timetable_semester_workload_export"),
             ("Нагрузка ⇡xlsx", "admin:timetable_semester_workload_import"),
@@ -184,6 +229,7 @@ class SemesterAdmin(admin.ModelAdmin):
     def get_urls(self) -> list[Any]:
         w = self.admin_site.admin_view
         return [
+            path("<int:pk>/solve/", w(self.solve_view), name="timetable_semester_solve"),
             path("<int:pk>/precheck/", w(self.precheck_view), name="timetable_semester_precheck"),
             path("<int:pk>/workload.xlsx", w(self.workload_export), name="timetable_semester_workload_export"),
             path("<int:pk>/workload-import/", w(self.workload_import), name="timetable_semester_workload_import"),
@@ -210,6 +256,49 @@ class SemesterAdmin(admin.ModelAdmin):
         ok = request.user.has_perm("timetable.change_workloaditem" if change else "timetable.view_workloaditem")
         if not ok:
             raise PermissionDenied
+
+    def solve_view(self, request: HttpRequest, pk: int) -> HttpResponse:
+        """Форма «Построить расписание»: ставит расчёт в очередь и ведёт на страницу его хода."""
+        from django.core.exceptions import PermissionDenied
+
+        if not request.user.has_perm("timetable.add_solverun"):
+            raise PermissionDenied
+        sem = get_object_or_404(m.Semester, pk=pk)
+        form = SolveForm(sem, request.POST or None)
+        if request.method == "POST" and form.is_valid():
+            d = form.cleaned_data
+            try:
+                run = enqueue(
+                    sem,
+                    time_limit_s=round(d["minutes"] * 60),
+                    variants=d["variants"],
+                    workers=d["workers"],
+                    seed=d["seed"],
+                    min_diff=d["min_diff"],
+                    preset=d["preset"] or default_preset(),
+                    reference=d["reference"],
+                    name_prefix=d["name_prefix"],
+                    user=request.user,
+                )
+            except RunConflict as e:
+                messages.error(request, str(e))
+                if e.active is not None:
+                    return HttpResponseRedirect(reverse("admin:timetable_solverun_change", args=[e.active.pk]))
+            else:
+                messages.success(request, f"Расчёт №{run.pk} поставлен в очередь.")
+                return HttpResponseRedirect(reverse("admin:timetable_solverun_change", args=[run.pk]))
+        return render(
+            request,
+            "admin/timetable/solve.html",
+            self._ctx(
+                request,
+                sem,
+                f"Построить расписание: {sem}",
+                form=form,
+                active=active_run(sem),
+                recent=sem.runs.select_related("created_by")[:5],  # type: ignore[attr-defined]
+            ),
+        )
 
     def precheck_view(self, request: HttpRequest, pk: int) -> HttpResponse:
         self._perm(request)
@@ -1392,6 +1481,7 @@ class ScheduleVariantAdmin(admin.ModelAdmin):
         "created_at",
         "created_by",
         "breakdown_table",
+        "run",
     ]
     fields = [
         "name",
@@ -1405,6 +1495,7 @@ class ScheduleVariantAdmin(admin.ModelAdmin):
         "objective",
         "wall_time_s",
         "params",
+        "run",
         "created_by",
         "created_at",
     ]
@@ -1654,3 +1745,108 @@ class ScheduleVariantAdmin(admin.ModelAdmin):
             rep = validate(problem, sched)
             level = messages.SUCCESS if rep.ok else messages.ERROR
             messages.add_message(request, level, f"«{v.name}»: жёстких нарушений {len(rep.hard)}, штраф {rep.total}")
+
+
+# ====================================================================== запуски расчёта (этап 5)
+
+
+@admin.register(m.SolveRun)
+class SolveRunAdmin(admin.ModelAdmin):
+    """История и ход фоновых расчётов. Запуск — кнопкой «Построить расписание» у семестра."""
+
+    list_display = ["number", "semester", "status_label", "created_at", "created_by", "short_progress", "result"]
+    list_filter = ["status", "semester"]
+    list_select_related = ["semester", "created_by"]
+
+    @admin.display(description="№", ordering="pk")
+    def number(self, obj: m.SolveRun) -> str:
+        return f"№{obj.pk}"
+
+    @admin.display(description="состояние", ordering="status")
+    def status_label(self, obj: m.SolveRun) -> str:
+        return obj.get_status_display() + (" (остановка запрошена)" if obj.is_active and obj.cancel_requested else "")
+
+    @admin.display(description="ход")
+    def short_progress(self, obj: m.SolveRun) -> str:
+        p = obj.progress or {}
+        if obj.status == m.SolveRun.Status.RUNNING and p:
+            est = f", штраф ≈ {p['objective']:.0f}" if p.get("objective") is not None else ""
+            return f"вариант {p.get('variant')} из {p.get('of')}{est}"
+        if obj.elapsed_s is not None and not obj.is_active:
+            return f"{obj.elapsed_s / 60:.1f} мин"
+        return "—"
+
+    @admin.display(description="варианты")
+    def result(self, obj: m.SolveRun) -> str:
+        return format_html_join(
+            ", ",
+            '<a href="{}">{}</a>',
+            ((reverse("admin:timetable_variant_grid", args=[v.pk]), v.name) for v in obj.variants.all()),
+        )
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False  # запуск — из семестра: «Построить расписание»
+
+    def has_delete_permission(self, request: HttpRequest, obj: m.SolveRun | None = None) -> bool:
+        return super().has_delete_permission(request, obj) and (obj is None or not obj.is_active)
+
+    def get_urls(self) -> list[Any]:
+        w = self.admin_site.admin_view
+        return [
+            path("<int:pk>/cancel/", w(self.cancel_view), name="timetable_solverun_cancel"),
+            *super().get_urls(),
+        ]
+
+    def change_view(
+        self, request: HttpRequest, object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
+    ) -> HttpResponse:
+        """Страница хода расчёта (вместо формы редактирования): обновляется сама, пока идёт расчёт."""
+        from django.core.exceptions import PermissionDenied
+
+        run = get_object_or_404(
+            m.SolveRun.objects.select_related("semester", "preset", "reference", "created_by"), pk=object_id
+        )
+        if not self.has_view_permission(request, run):
+            raise PermissionDenied
+        now = timezone.now()
+        queue_pos = None
+        if run.status == m.SolveRun.Status.QUEUED:
+            queued = m.SolveRun.objects.filter(status=m.SolveRun.Status.QUEUED)
+            queue_pos = queued.filter(created_at__lt=run.created_at).count()
+        p = run.progress or {}
+        budget = run.time_limit_s * run.variants_requested
+        return render(
+            request,
+            "admin/timetable/solverun.html",
+            {
+                **self.admin_site.each_context(request),
+                "opts": self.model._meta,
+                "title": str(run),
+                "run": run,
+                "p": p,
+                "queue_pos": queue_pos,
+                "queued_long": queue_pos is not None and (now - run.created_at).total_seconds() > 30,
+                "silent_s": (now - run.heartbeat_at).total_seconds()
+                if run.status == m.SolveRun.Status.RUNNING and run.heartbeat_at
+                else None,
+                "elapsed_min": (run.elapsed_s or 0) / 60,
+                "budget_min": budget / 60,
+                "percent": min(99, round(100 * (run.elapsed_s or 0) / budget)) if budget and run.is_active else None,
+                "variants": run.variants.all(),
+                "can_cancel": run.is_active and self.has_change_permission(request, run),
+                "refresh": run.is_active,
+            },
+        )
+
+    def cancel_view(self, request: HttpRequest, pk: int) -> HttpResponse:
+        from django.core.exceptions import PermissionDenied
+
+        run = get_object_or_404(m.SolveRun, pk=pk)
+        if request.method != "POST" or not self.has_change_permission(request, run):
+            raise PermissionDenied
+        run = request_cancel(run)
+        if run.status == m.SolveRun.Status.CANCELLED:
+            messages.success(request, "Расчёт снят с очереди.")
+        elif run.is_active:
+            messages.info(request, "Остановка запрошена: через несколько секунд расчёт сохранит найденное.")
+        return HttpResponseRedirect(reverse("admin:timetable_solverun_change", args=[pk]))

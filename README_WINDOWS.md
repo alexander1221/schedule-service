@@ -39,6 +39,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -PythonBin "py -3.
 .venv\Scripts\activate
 python manage.py createsuperuser      # вход по почте
 python manage.py runserver            # http://127.0.0.1:8000/admin/
+# второе окно PowerShell (тоже .venv\Scripts\activate) — обработчик кнопки «Построить расписание»:
+python manage.py solve_worker
+# или расчёт прямо в окне, без очереди:
 python manage.py solve_semester 1 --time 120 --variants 3
 python schedule_cli.py precheck data\problem.json
 python schedule_cli.py solve data\problem.json -o output\schedule.json --time 120 --variants 3

@@ -39,6 +39,30 @@ services:
     expose:
       - "8000"
 
+  # Обработчик расчётов: забирает запуски «Построить расписание» из очереди в БД и считает.
+  # Тот же образ, что web; миграции и статику делает web. Ядер решателю — SOLVER_MAX_WORKERS в .env.
+  worker:
+    build:
+      context: .
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-python:3.13-slim}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_ENGINE: postgres
+      DB_HOST: db
+      DB_PORT: "5432"
+      DJANGO_DEBUG: "0"
+      SKIP_MIGRATE: "1"
+      SKIP_COLLECTSTATIC: "1"
+    command: ["python", "manage.py", "solve_worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    stop_grace_period: 30s
+
   caddy:
     image: caddy:2
     restart: unless-stopped
