@@ -1,11 +1,11 @@
 # CLAUDE.md — память проекта для Claude Code
 
 Сервис автоматического составления семестрового расписания колледжа (кафедры **Кино** и **ПиУП**,
-площадка ВДНХ). Текущая версия — `scheduler/__init__.py` (сейчас **0.10.0**). Исходное ТЗ
+площадка ВДНХ). Текущая версия — `scheduler/__init__.py` (сейчас **0.11.0**). Исходное ТЗ
 на русском: этапы §13 — 1) домен+генератор+валидатор, 2) решатель, 3) варианты/закрепления/
 пересборка/диагностика, 4) Django-модели/админка/xlsx, 5) фоновый запуск + API, 6) UI диспетчера
 (React+TS, drag&drop), 7) форма преподавателя + вход по почте, 8) экспорт/развёртывание/документы.
-**Готовы 1–5, 7, 8 (5: фоновый расчёт 0.8.0, API 0.9.0). Остался 6.** Сверх ТЗ сделан этап 5б — MCP-сервер
+**Готовы все этапы 1–8** (5: фоновый расчёт 0.8.0, API 0.9.0; 6: интерфейс диспетчера 0.11.0). Сверх ТЗ сделан этап 5б — MCP-сервер
 для ИИ-агента диспетчера на локальной модели (0.10.0, docs/MCP.md).
 
 Пользователь — заказчик со стороны колледжа (не разработчик-профессионал, но технически грамотный,
@@ -23,6 +23,7 @@ DB_ENGINE=postgres DB_HOST=127.0.0.1 DB_PORT=5432 DB_PASSWORD=… python -m pyte
 python -m ruff check . && python -m ruff format --check .
 python -m mypy                               # строго только пакет scheduler (так настроено)
 python manage.py makemigrations --check --dry-run
+cd frontend && npm ci && npm run typecheck && npm test && npm run build   # интерфейс диспетчера (Node 22.12+)
 python manage.py runserver                   # /admin/ — диспетчер, /login/ — вход по коду, /me/ — преподаватель
 python manage.py solve_worker                # обработчик очереди расчётов (кнопка «Построить расписание»)
 python manage.py solve_semester <id> --time 300 --variants 3 [--workers 8] [--reference-variant <id>]  # в окне, без очереди
@@ -31,7 +32,8 @@ python manage.py test_email <адрес>          # проверка почты
 ```
 
 Перед сдачей любой работы: ruff, mypy, все тесты (+ `--slow`, если трогали решатель/валидатор/генератор),
-`makemigrations --check`. Веб-изменения — ещё и на PostgreSQL.
+`makemigrations --check`. Веб-изменения — ещё и на PostgreSQL. Фронтенд — typecheck, test, build и проверка в
+настоящем браузере (Chromium + Playwright есть в окружении: `executable_path` в /opt/pw-browsers).
 
 ## Карта кода
 
@@ -55,6 +57,7 @@ python manage.py test_email <адрес>          # проверка почты
 | `timetable/importers/` | разбор реального файла расписания учебного отдела → черновики (`current_schedule.py`, `draft_writer.py`) |
 | `timetable/export/` | `schedule_xlsx.py` (выгрузка варианта), `ics.py` (календарь RFC 5545, свой код) |
 | `accounts/` | User (вход по почте, без username), AllowedEmail (белый список с ролью), LoginCode, `codes.py` — вход по коду, ApiToken (SHA-256, показывается один раз) |
+| `frontend/` | интерфейс диспетчера (этап 6): React 19 + TS 7 + Vite 8, без UI-библиотек; `App.tsx`, `ScheduleGrid.tsx` (drag & drop + выбор кликом), `moves.ts` (черновик переносов), `Panels.tsx`; `/app/` — `webapp/views.py`; docs/FRONTEND.md |
 | `mcp_server/` | MCP-сервер агента диспетчера: `client.py` (urllib → API), `tools.py` (17 инструментов, без mcp), `compat.py` (v1/v2 SDK), `__main__.py` (`--check`); docs/MCP.md |
 | `api/` | API `/api/v1/` (django-ninja): `routes.py` (20 запросов, тонкий слой над services), `schemas.py`, `auth.py` (TokenAuth / StaffSession + `require(perm)`); описание — docs/API.md |
 | `portal/` | `/login/`, `/login/code/`, `/me/` (пожелания −2…+2, нагрузка, расписание, календарь), подписка `/calendar/<token>.ics` |
@@ -165,11 +168,15 @@ python manage.py test_email <адрес>          # проверка почты
 варианта дата начала действия; предыдущий действует до неё; календари .ics и выгрузки переключаются
 с этой даты; старые пожелания сохраняются в снимке старого варианта. Нужна миграция; шаблоны xlsx не меняются.
 
-### Этап 6 — интерфейс диспетчера (React + TypeScript)
-- Сетка варианта (группа/преподаватель/аудитория, чёт/нечёт), перетаскивание пары → мгновенная проверка
-  валидатором (через API) с подсветкой нарушений; закрепление; «пересобрать вокруг закреплённого»
-  (`--reference-variant`); сравнение вариантов.
-- Сборка фронтенда — в Docker (multi-stage), статика через Caddy; в репозитории без node_modules.
+### Этап 6 — интерфейс диспетчера — готово в 0.11.0
+- `/app/`: сетка варианта (группа/преподаватель/аудитория, чёт/нечёт), перенос пар → `POST /variants/{id}/check`
+  (вариант не меняется), «Закрепить и пересобрать» (pins + run с эталоном = текущий вариант), ход расчёта,
+  сравнение. Сборка — в Docker (этап `frontend` на node:22-slim), статика `static/app/` через Caddy.
+- Возможное развитие: подсветка клеток с нарушениями (валидатор отдаёт только текст — нужен слот в
+  `Violation`), утверждение из интерфейса, редактирование пожеланий/закреплений там же.
+- Правила: русские подписи; светлая и тёмная тема (CSS-переменные); ширина 390 px без горизонтальной прокрутки
+  страницы (сетка прокручивается внутри `.grid-wrap`); всё доступно без мыши; новые зависимости — только
+  выпущенные ≥ 2 недель назад, точные версии в package.json, `npm ci` по lock.
 
 ### Прочее
 - Боевой запуск по `docs/DEPLOY.md` не проверен на официальных образах (`python:3.13-slim`, `postgres:16-alpine`,
@@ -191,6 +198,10 @@ python manage.py test_email <адрес>          # проверка почты
 - Кириллица в путях Windows и BOM: `.env` читается как `utf-8-sig`.
 - Прогресс CP-SAT приходит из потоков решателя — там никакого ORM; в БД пишет один поток `_Reporter`
   со своим соединением (закрывает его сам). Тесты с этим потоком — `django_db(transaction=True)`.
+- npm 10.9 (Node 22) падает на peer-зависимостях vitest («reading 'edgesOut'») → `frontend/.npmrc`
+  `legacy-peer-deps=true`, peer-пакеты в package.json явно. jsdom 30 требует Node ≥ 22.22.2 → jsdom 27.
+- Остановка фоновых процессов в песочнице: `pkill -f`/`grep [r]unserver` ловят и собственную оболочку (в её
+  командной строке те же слова) — убивать по PID из отдельной команды.
 - SDK mcp v2: `mcp.server.fastmcp` нарочно падает (ModuleNotFoundError) — класс `MCPServer` в
   `mcp.server.mcpserver`; типы протокола v2 — snake_case (`is_error`, `input_schema`), v1 — camelCase.
   Аннотации собирать `ToolAnnotations.model_validate({camelCase})` — работает в обеих.

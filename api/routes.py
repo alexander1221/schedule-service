@@ -476,7 +476,20 @@ def variant_grid(request: HttpRequest, variant_id: int, key: str, by: str = "gro
         week=week,
         days=sv.day_headers(p),
         rows=[
-            s.GridRow(pair=r.pair, time=r.time, cells=[[s.GridEntry(**vars(e)) for e in c] for c in r.cells])
+            s.GridRow(
+                pair=r.pair,
+                time=r.time,
+                cells=[
+                    [
+                        s.GridEntry(
+                            **{k: v for k, v in vars(e).items() if k != "lessons"},
+                            lessons=[s.Lesson(item_id=int(i), week=w) for i, w in e.lessons],
+                        )
+                        for e in c
+                    ]
+                    for c in r.cells
+                ],
+            )
             for r in rows
         ],
     )

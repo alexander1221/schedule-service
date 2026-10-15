@@ -204,7 +204,10 @@ def test_variant_views(api, synthetic, variant):
     groups = api.get(f"{API}/variants/{variant.pk}/entities?by=group").json()
     g = api.get(f"{API}/variants/{variant.pk}/grid?by=group&key={groups[0]['id']}&week=odd").json()
     assert g["name"] == groups[0]["name"] and len(g["days"]) == 5 and g["rows"]
-    assert any(cell for row in g["rows"] for cell in row["cells"])
+    entries = [e for row in g["rows"] for cell in row["cells"] for e in cell]
+    assert entries and all(e["lessons"] for e in entries)  # интерфейсу нужно, что переносить
+    lesson = entries[0]["lessons"][0]
+    assert lesson["week"] in ("both", "odd") and variant.assignments.filter(item_id=lesson["item_id"]).exists()
     assert api.get(f"{API}/variants/{variant.pk}/grid?by=group&key=nope").status_code == 400
     fr = api.get(f"{API}/variants/{variant.pk}/free-rooms?day=1&pair_from=1&pair_to=2").json()
     assert all({"name", "free_pairs", "fully_free"} <= set(x) for x in fr)

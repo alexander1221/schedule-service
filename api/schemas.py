@@ -204,12 +204,18 @@ class Entity(Schema):
     name: str
 
 
+class Lesson(Schema):
+    item_id: int
+    week: str = Field(description="both | odd | even — неделя назначения (для переноса в /check)")
+
+
 class GridEntry(Schema):
     discipline: str
     teachers: str
     groups: str
     room: str
     marks: list[str]
+    lessons: list[Lesson] = Field(description="что стоит в клетке: элементы нагрузки и их недели")
 
 
 class GridRow(Schema):

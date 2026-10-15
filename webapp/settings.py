@@ -83,7 +83,7 @@ WSGI_APPLICATION = "webapp.wsgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "webapp" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -173,6 +173,9 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 SOLVER_MAX_WORKERS = max(1, int(os.environ.get("SOLVER_MAX_WORKERS", "0")) or (os.cpu_count() or 2) - 1)
 
 STATIC_URL = "static/"
+# Собранный интерфейс диспетчера (frontend/, npm run build) — раздаётся как статика под static/app/
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
+STATICFILES_DIRS = [("app", FRONTEND_DIST)] if FRONTEND_DIST.is_dir() else []
 STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))
 
 # Загрузка xlsx: файл нагрузки колледжа — сотни строк, 10 МБ с запасом.

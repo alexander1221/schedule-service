@@ -1,0 +1,58 @@
+# Интерфейс диспетчера (React) — для разработчика
+
+Этап 6, версия 0.11.0. Одна страница `/app/` поверх API `/api/v1/` (docs/API.md), та же сессия, что
+у админки. Как пользоваться — docs/GUIDE.md, раздел «Интерфейс диспетчера».
+
+## Устройство
+
+| Файл | Что |
+|---|---|
+| `frontend/src/App.tsx` | состояние: семестр → вариант → чья сетка → неделя; черновик переносов, проверка, расчёт, сравнение |
+| `frontend/src/ScheduleGrid.tsx` | сетка «дни × пары»; перенос мышью (HTML5 drag & drop) или без неё (выбрать занятие щелчком/Enter → щёлкнуть клетку, Esc — отмена) |
+| `frontend/src/moves.ts` | чистая логика черновика: `addMove` / `undoMove` / `applyMoves` (тесты — `moves.test.ts`) |
+| `frontend/src/Panels.tsx` | панели «Переносы» (проверка, «Закрепить и пересобрать»), «Расчёт», «Сравнение» |
+| `frontend/src/api.ts`, `types.ts` | клиент и типы API; CSRF — из cookie `csrftoken` (её ставит страница `/app/`) |
+| `webapp/views.py` | `/app/` (только для входа в админку) отдаёт `frontend/dist/index.html`; без сборки — страница «не собран» (503) |
+
+Сборка кладётся в `frontend/dist`, Django раздаёт её как статику `static/app/` (`STATICFILES_DIRS`), в Docker —
+Caddy после `collectstatic`. В git нет ни `node_modules`, ни `dist`.
+
+**Перенос пары.** Записи сетки несут `lessons: [{item_id, week}]` (поле добавлено в API в 0.11.0). Перенос не
+меняет вариант: черновик уходит в `POST /variants/{id}/check` с `moves` → независимый валидатор возвращает
+нарушения и штраф. «Закрепить и пересобрать» создаёт закрепления (`POST /semesters/{id}/pins`, 409 «уже есть» —
+не ошибка) и расчёт с эталоном — текущим вариантом (`POST /semesters/{id}/runs`).
+
+## Команды
+
+Нужен Node.js 22.12+ (идёт с npm 10).
+
+```bash
+cd frontend
+npm ci                 # зависимости строго по package-lock.json
+npm run dev            # http://localhost:5173/static/app/ — сначала войдите в http://localhost:8000/admin/
+npm run typecheck
+npm test               # vitest + Testing Library (jsdom)
+npm run build          # → frontend/dist, затем http://127.0.0.1:8000/app/
+```
+
+`npm run dev` проксирует `/api` и `/admin` на `runserver` (:8000), поэтому вход и CSRF работают как в бою.
+
+## Версии и почему такие (2026-10-15)
+
+| Пакет | Версия | Почему |
+|---|---|---|
+| react, react-dom, @types/react(-dom) | 19.3.0 | последние, вышедшие до 1 октября (19.3.1 — 14.10, свежая) |
+| vite | 8.3.2 | то же правило (8.3.4 — 08.10) |
+| @vitejs/plugin-react | 6.1.1 | то же |
+| typescript | 7.0.2 | 08.07; `tsc --noEmit` на нашем коде проходит |
+| vitest | 5.0.3 | 30.09 |
+| @testing-library/react / dom | 16.3.3 / 10.4.2 | матчеров jest-dom не берём — обычные проверки |
+| jsdom | 27.4.0 | jsdom 30 требует Node ≥ 22.22.2, у многих 22.22.0 |
+| @types/node | 22.20.5 | явная peer-зависимость vite (см. ниже) |
+
+**`frontend/.npmrc`: `legacy-peer-deps=true`.** npm 10.9 (идёт с Node 22) падает на необязательных
+peer-зависимостях vitest (`Cannot read properties of null (reading 'edgesOut')`, проверено на 4.1 и 5.0).
+npm 11 устанавливает без этого. Все нужные peer-пакеты перечислены в `package.json` явно.
+
+Перетаскивание сделано без библиотек (встроенный HTML5 drag & drop) — меньше зависимостей; для работы без мыши
+есть «выбрать и щёлкнуть».

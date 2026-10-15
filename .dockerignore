@@ -11,3 +11,6 @@ backups
 .mypy_cache
 .ruff_cache
 *.sqlite3
+frontend/node_modules
+frontend/dist
+.venv-mcp

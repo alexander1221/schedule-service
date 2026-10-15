@@ -18,6 +18,9 @@ class Entry:
     groups: str
     room: str
     marks: list[str] = field(default_factory=list)  # «мигающая», «поток», «онлайн», «бронь», …
+    #: (элемент, неделя назначения) — что именно стоит в клетке; нужно интерфейсу для переноса.
+    #: В сравнение записей не входит (выгрузки сравнивают нечётную и чётную недели по содержанию).
+    lessons: list[tuple[str, str]] = field(default_factory=list, compare=False)
 
 
 @dataclass
@@ -75,17 +78,20 @@ def grid(p: Problem, s: Schedule, by: str, key: str, week: Week) -> list[GridRow
             groups,
             room,
             marks,
+            [(a.item_id, a.week.value)],
         )
         lst = cells.setdefault(a.slot_id, [])
         # объединённые элементы в одной аудитории — одна запись с перечислением групп
         same = next(
             (x for x in lst if x.discipline == e.discipline and x.room == e.room and x.teachers == e.teachers), None
         )
-        if same and same.groups != e.groups:
-            same.groups = ", ".join(sorted(set(same.groups.split(", ")) | set(e.groups.split(", "))))
-            if "поток" not in same.marks:
-                same.marks.append("поток")
-        elif not same:
+        if same:
+            same.lessons += e.lessons
+            if same.groups != e.groups:
+                same.groups = ", ".join(sorted(set(same.groups.split(", ")) | set(e.groups.split(", "))))
+                if "поток" not in same.marks:
+                    same.marks.append("поток")
+        else:
             lst.append(e)
     rows = []
     for pt in sorted(p.grid.pairs, key=lambda x: x.start_min):

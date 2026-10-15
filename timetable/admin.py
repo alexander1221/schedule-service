@@ -211,7 +211,8 @@ class SemesterAdmin(admin.ModelAdmin):
             ("Задача JSON", "admin:timetable_semester_problem_json"),
             ("Пожелания", "admin:timetable_semester_wishes"),
         ]
-        return format_html_join(" · ", '<a href="{}">{}</a>', ((reverse(u, args=[obj.pk]), t) for t, u in links))
+        html = format_html_join(" · ", '<a href="{}">{}</a>', ((reverse(u, args=[obj.pk]), t) for t, u in links))
+        return format_html('<a href="/app/?semester={}"><b>Интерфейс</b></a> · {}', obj.pk, html)
 
     def save_model(self, request: HttpRequest, obj: m.Semester, form: Any, change: bool) -> None:
         super().save_model(request, obj, form, change)
@@ -1505,8 +1506,11 @@ class ScheduleVariantAdmin(admin.ModelAdmin):
     @admin.display(description="смотреть")
     def views(self, obj: m.ScheduleVariant) -> str:
         return format_html(
+            '<a href="/app/?semester={}&amp;variant={}"><b>в интерфейсе</b></a> · '
             '<a href="{}">расписание</a> · <a href="{}">свободные аудитории</a> · <a href="{}">часы</a>'
             ' · <a href="{}">Excel ⇣</a>',
+            obj.semester_id,
+            obj.pk,
             reverse("admin:timetable_variant_grid", args=[obj.pk]),
             reverse("admin:timetable_variant_free_rooms") + f"?variant={obj.pk}",
             reverse("admin:timetable_variant_hours", args=[obj.pk]),

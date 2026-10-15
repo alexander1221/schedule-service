@@ -28,6 +28,12 @@ staticfiles/
 media/
 *.sqlite3
 
+# интерфейс диспетчера: зависимости и сборка (собирается в Docker или npm run build)
+frontend/node_modules/
+frontend/dist/
+# окружение MCP-сервера на компьютере диспетчера
+.venv-mcp/
+
 # офлайн-установка
 wheels/
 *.tar.xz
