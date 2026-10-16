@@ -1,5 +1,7 @@
 """Интерфейс диспетчера (этап 6): одна страница React, собранная в frontend/dist (docs/FRONTEND.md)."""
 
+import os
+
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.staticfiles import finders
 from django.http import HttpRequest, HttpResponse
@@ -10,7 +12,8 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 @staff_member_required
 @ensure_csrf_cookie  # интерфейс берёт CSRF-токен из cookie для изменяющих запросов к API
 def dispatcher_app(request: HttpRequest) -> HttpResponse:
-    path = finders.find("app/index.html")
+    # с префиксом (STATICFILES_DIRS = [("app", …)]) Django ищет путь через os.sep: на Windows «app\index.html»
+    path = finders.find(os.path.join("app", "index.html"))
     if not path:
         return render(request, "app_not_built.html", status=503)
     with open(path, encoding="utf-8") as f:
