@@ -115,3 +115,9 @@ aside { display: flex; flex-direction: column; gap: 12px; }
 .top .approved { color: var(--good); font-weight: 600; }
 .notice { background: var(--surface); border: 1px solid var(--good); color: var(--good); padding: 6px 12px; border-radius: 6px; }
 button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+/* свёрнутый синхронный блок (английский по подгруппам) */
+.lesson.block { border-left-width: 4px; }
+.lesson .parts summary { cursor: pointer; color: var(--muted); }
+.lesson .parts ul { list-style: none; padding: 0; margin: 2px 0 0; }
+.lesson .parts li { color: var(--muted); padding: 1px 0; border-top: 1px dotted var(--lesson-line); overflow-wrap: anywhere; }

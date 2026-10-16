@@ -1,4 +1,4 @@
-import { addMove, applyMoves, undoMove } from "./moves";
+import { addMove, applyMoves, groupBlocks, plural, undoMove } from "./moves";
 import type { Grid, GridEntry } from "./types";
 
 const math: GridEntry = {
@@ -42,4 +42,29 @@ test("applyMoves показывает перенесённое в новой к�
   expect(shown[0][0]).toEqual([]);
   expect(shown[1][1]).toEqual([{ entry: math, moved: true, from: { day: 1, pair: 1 } }]);
   expect(shown[0][1][0].moved).toBe(false);
+});
+
+test("подгруппы одного блока в клетке сворачиваются в одну карточку и переносятся вместе", () => {
+  const sub = (id: number, t: string): GridEntry => ({
+    discipline: "Английский язык",
+    teachers: t,
+    groups: "1ИТ1",
+    room: String(100 + id),
+    marks: [`A${id}`],
+    lessons: [{ item_id: id, week: "both" }],
+    block_id: "3",
+    block: "Английский, 1 курс",
+  });
+  const items = [{ entry: math, moved: false }, ...[1, 2, 3].map((i) => ({ entry: sub(i, `Учитель ${i}`), moved: false }))];
+  const g = groupBlocks(items);
+  expect(g).toHaveLength(2);
+  expect(g[0].entry).toBe(math); // обычная пара не трогается
+  expect(g[1].parts).toHaveLength(3);
+  expect(g[1].entry.lessons.map((l) => l.item_id)).toEqual([1, 2, 3]);
+  expect(g[1].entry.teachers).toBe("Учитель 1, Учитель 2, Учитель 3");
+  expect(addMove([], g[1].entry, 1, 2, 3, 4).map((m) => m.item_id)).toEqual([1, 2, 3]);
+  expect(groupBlocks([items[1]])[0].parts).toBeUndefined(); // одна подгруппа — без свёртки
+  expect(plural(1, "подгруппа", "подгруппы", "подгрупп")).toBe("подгруппа");
+  expect(plural(3, "подгруппа", "подгруппы", "подгрупп")).toBe("подгруппы");
+  expect(plural(11, "подгруппа", "подгруппы", "подгрупп")).toBe("подгрупп");
 });

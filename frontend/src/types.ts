@@ -53,6 +53,9 @@ export interface GridEntry {
   room: string;
   marks: string[];
   lessons: Lesson[];
+  /** синхронный блок (английский по подгруппам); "" — не блок */
+  block_id?: string;
+  block?: string;
 }
 
 export interface GridRow {

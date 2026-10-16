@@ -46,6 +46,54 @@ export interface ShownEntry {
   moved: boolean;
   /** откуда перенесено (для подсказки), если moved */
   from?: { day: number; pair: number };
+  /** свёрнутый синхронный блок: записи подгрупп, из которых собрана карточка */
+  parts?: GridEntry[];
+}
+
+/** Одна и та же запись сетки (по составу занятий) — объекты пересоздаются при каждой отрисовке. */
+export const sameEntry = (a: GridEntry, b: GridEntry) =>
+  a.lessons.length === b.lessons.length &&
+  a.lessons.every((l, i) => l.item_id === b.lessons[i].item_id && l.week === b.lessons[i].week);
+
+/** Записи одного синхронного блока в клетке (английский по подгруппам) → одна карточка.
+ *  Блок по правилам стоит целиком в одном слоте, поэтому и переносится целиком. */
+export function groupBlocks(items: ShownEntry[]): ShownEntry[] {
+  const lists: ShownEntry[][] = [];
+  const at = new Map<string, number>(); // блок (и «перенесён ли») → номер списка; порядок — по первой записи
+  for (const s of items) {
+    const key = s.entry.block_id ? `${s.entry.block_id}/${s.moved}` : null;
+    if (key !== null && at.has(key)) lists[at.get(key)!].push(s);
+    else {
+      if (key !== null) at.set(key, lists.length);
+      lists.push([s]);
+    }
+  }
+  const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
+  return lists.map((list) => {
+    if (list.length === 1) return list[0];
+    const parts = list.map((x) => x.entry);
+    const first = parts[0];
+    return {
+      moved: list[0].moved,
+      from: list[0].from,
+      parts,
+      entry: {
+        discipline: first.discipline,
+        teachers: uniq(parts.map((x) => x.teachers)).join(", "),
+        groups: uniq(parts.flatMap((x) => x.groups.split(", "))).join(", "),
+        room: "",
+        marks: [],
+        lessons: parts.flatMap((x) => x.lessons),
+        block_id: first.block_id,
+        block: first.block,
+      },
+    };
+  });
+}
+
+export function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10, m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
 }
 
 /** Сетка с применёнными переносами: перенесённые записи — в новой клетке, в старой их нет. */

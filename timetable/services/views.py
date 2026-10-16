@@ -21,6 +21,10 @@ class Entry:
     #: (элемент, неделя назначения) — что именно стоит в клетке; нужно интерфейсу для переноса.
     #: В сравнение записей не входит (выгрузки сравнивают нечётную и чётную недели по содержанию).
     lessons: list[tuple[str, str]] = field(default_factory=list, compare=False)
+    #: Синхронный блок (английский по подгруппам): id и название. Интерфейс сворачивает записи одного
+    #: блока в клетке в одну карточку и переносит их только вместе. В сравнение не входит.
+    block_id: str = field(default="", compare=False)
+    block: str = field(default="", compare=False)
 
 
 @dataclass
@@ -79,6 +83,8 @@ def grid(p: Problem, s: Schedule, by: str, key: str, week: Week) -> list[GridRow
             room,
             marks,
             [(a.item_id, a.week.value)],
+            blk.id if (blk := p.block_of_item.get(it.id)) else "",
+            blk.name if blk else "",
         )
         lst = cells.setdefault(a.slot_id, [])
         # объединённые элементы в одной аудитории — одна запись с перечислением групп

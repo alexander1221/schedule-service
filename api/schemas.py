@@ -219,6 +219,8 @@ class GridEntry(Schema):
     room: str
     marks: list[str]
     lessons: list[Lesson] = Field(description="что стоит в клетке: элементы нагрузки и их недели")
+    block_id: str = Field("", description="синхронный блок (английский по подгруппам); пусто — не блок")
+    block: str = Field("", description="название блока")
 
 
 class GridRow(Schema):

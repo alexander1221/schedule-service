@@ -1,7 +1,7 @@
 // Сетка «дни × пары» с переносом занятий: мышью (перетаскивание) или без неё
 // (выбрать занятие щелчком / Enter, затем щёлкнуть клетку; Esc — отменить выбор).
 import { useEffect, useRef, useState } from "react";
-import type { ShownEntry } from "./moves";
+import { groupBlocks, plural, sameEntry, type ShownEntry } from "./moves";
 import type { Grid, GridEntry } from "./types";
 
 interface Picked {
@@ -111,14 +111,16 @@ export function ScheduleGrid({ grid, days, shown, readOnly, bad, badItems, prefs
                         ))}
                       </select>
                     )}
-                    {items.map((s, k) => {
+                    {groupBlocks(items).map((s, k) => {
                       const canMove = !readOnly && s.entry.lessons.length > 0;
                       const isBad = !!problems && s.entry.lessons.some((l) => badItems?.has(l.item_id));
-                      const isPicked = picked?.entry === s.entry;
+                      const isPicked = !!picked && sameEntry(picked.entry, s.entry);
                       return (
                         <div
                           key={k}
-                          className={`lesson${s.moved ? " moved" : ""}${isPicked ? " picked" : ""}${isBad ? " bad" : ""}`}
+                          className={`lesson${s.parts ? " block" : ""}${s.moved ? " moved" : ""}${isPicked ? " picked" : ""}${
+                            isBad ? " bad" : ""
+                          }`}
                           draggable={canMove}
                           role={canMove ? "button" : undefined}
                           tabIndex={canMove ? 0 : undefined}
@@ -151,11 +153,34 @@ export function ScheduleGrid({ grid, days, shown, readOnly, bad, badItems, prefs
                           }}
                         >
                           <div className="disc">{s.entry.discipline}</div>
-                          <div className="who">
-                            {grid.by === "group" ? s.entry.teachers : s.entry.groups}
-                            {s.entry.room && <span className="room"> · {s.entry.room}</span>}
-                          </div>
-                          {s.entry.marks.length > 0 && <div className="marks">{s.entry.marks.join(" · ")}</div>}
+                          {s.parts ? (
+                            <details
+                              className="parts"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            >
+                              <summary title={s.entry.block}>
+                                блок · {s.parts.length} {plural(s.parts.length, "подгруппа", "подгруппы", "подгрупп")}
+                              </summary>
+                              <ul>
+                                {s.parts.map((p, i) => (
+                                  <li key={i}>
+                                    {p.marks.length > 0 && <span className="marks">{p.marks.join(" · ")}: </span>}
+                                    {grid.by === "group" ? p.teachers : p.groups}
+                                    {p.room && <span className="room"> · {p.room}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          ) : (
+                            <>
+                              <div className="who">
+                                {grid.by === "group" ? s.entry.teachers : s.entry.groups}
+                                {s.entry.room && <span className="room"> · {s.entry.room}</span>}
+                              </div>
+                              {s.entry.marks.length > 0 && <div className="marks">{s.entry.marks.join(" · ")}</div>}
+                            </>
+                          )}
                           {s.moved && (
                             <button
                               type="button"

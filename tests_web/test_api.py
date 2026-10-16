@@ -205,6 +205,15 @@ def test_variant_views(api, synthetic, variant):
     g = api.get(f"{API}/variants/{variant.pk}/grid?by=group&key={groups[0]['id']}&week=odd").json()
     assert g["name"] == groups[0]["name"] and len(g["days"]) == 5 and g["rows"]
     entries = [e for row in g["rows"] for cell in row["cells"] for e in cell]
+    # синтетика с синхронным блоком: записи блока помечены id и названием блока
+    blocks = m.SyncBlock.objects.filter(semester=sem)
+    if blocks.exists():
+        all_entries = []
+        for grp in groups:
+            gg = api.get(f"{API}/variants/{variant.pk}/grid?by=group&key={grp['id']}&week=odd").json()
+            all_entries += [e for row in gg["rows"] for cell in row["cells"] for e in cell]
+        blk = blocks.first()
+        assert any(e["block_id"] == str(blk.pk) and e["block"] == blk.name for e in all_entries)
     assert entries and all(e["lessons"] for e in entries)  # интерфейсу нужно, что переносить
     lesson = entries[0]["lessons"][0]
     assert lesson["week"] in ("both", "odd") and variant.assignments.filter(item_id=lesson["item_id"]).exists()
