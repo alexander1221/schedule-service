@@ -118,8 +118,8 @@ class Slot:
 
 DEFAULT_PAIRS: tuple[PairTime, ...] = (
     PairTime(1, "09:30", "11:00"),
-    PairTime(2, "11:05", "12:35"),
-    PairTime(3, "12:45", "14:15"),
+    PairTime(2, "11:10", "12:40"),
+    PairTime(3, "12:50", "14:20"),  # обед 14:20–15:00
     PairTime(4, "15:00", "16:30"),
     PairTime(5, "16:40", "18:10"),
     PairTime(6, "18:20", "19:50"),

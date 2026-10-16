@@ -115,10 +115,10 @@ def test_in_person_to_online_uses_real_times():
     p = tiny(n_teachers=2)
     add_item(p, "inp", teacher="t1")
     add_item(p, "onl", teacher="t2", online=True, disc="d2")
-    # 3-я очно (до 14:15) -> 4-я онлайн (15:00): 45 минут — нарушение
+    # 3-я очно (до 14:20) -> 4-я онлайн (15:00): 40 минут — нарушение
     r = validate(p, Schedule([A("inp", B, "1-3", "r1"), A("onl", B, "1-4")]))
     assert r.breakdown[Crit.FMT_IN_TO_ONLINE] == 2  # обе недели
-    # 3-я очно -> 5-я онлайн (16:40): 145 минут — нормально (но есть окно)
+    # 3-я очно -> 5-я онлайн (16:40): 140 минут — нормально (но есть окно)
     r = validate(p, Schedule([A("inp", B, "1-3", "r1"), A("onl", B, "1-5")]))
     assert r.breakdown[Crit.FMT_IN_TO_ONLINE] == 0
     assert r.breakdown[Crit.GROUP_GAPS] == 2

@@ -14,6 +14,16 @@ def test_default_grid_is_mon_fri_7_pairs():
     assert len(g.slots) == 35
     assert g.slots[0].id == "1-1" and g.slots[-1].id == "5-7"
     assert g.slot_by_id["1-4"].start_min == 15 * 60  # 15:00
+    # сетка колледжа (0.13.2): обед 14:20–15:00 между 3-й и 4-й парой
+    assert [(p.start, p.end) for p in g.pairs] == [
+        ("09:30", "11:00"),
+        ("11:10", "12:40"),
+        ("12:50", "14:20"),
+        ("15:00", "16:30"),
+        ("16:40", "18:10"),
+        ("18:20", "19:50"),
+        ("20:00", "21:30"),
+    ]
 
 
 def test_saturday_toggle_and_no_sunday():
