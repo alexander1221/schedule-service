@@ -322,7 +322,17 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _utf8_output() -> None:
+    """Вывод в UTF-8. На Windows, когда вывод уходит в файл или другую программу, Python пишет в кодировке
+    системы (cp1251/cp1252) и падает на кириллице и значках (UnicodeEncodeError). В консоли Windows
+    вывод и так UTF-8 — там ничего не меняется."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower().replace("-", "") != "utf8":
+            stream.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_output()
     ap = build_parser()
     a = ap.parse_args(argv)
     try:

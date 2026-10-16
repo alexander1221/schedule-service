@@ -24,7 +24,17 @@ def _client(args: argparse.Namespace) -> ApiClient:
     return ApiClient(url, token)
 
 
+def _utf8_output() -> None:
+    """Вывод в UTF-8. На Windows, когда вывод уходит в файл или другую программу, Python пишет в кодировке
+    системы (cp1251/cp1252) и падает на кириллице и значках (UnicodeEncodeError). В консоли Windows
+    вывод и так UTF-8 — там ничего не меняется."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower().replace("-", "") != "utf8":
+            stream.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> None:
+    _utf8_output()  # stdio-протокол библиотека mcp и так ведёт в UTF-8; это — для --check и сообщений об ошибках
     ap = argparse.ArgumentParser(prog="python -m mcp_server", description="MCP-сервер агента диспетчера расписания")
     ap.add_argument("--url", help="адрес сайта (иначе RASPISANIE_URL)")
     ap.add_argument("--token", help="токен API (иначе RASPISANIE_TOKEN)")

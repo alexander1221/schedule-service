@@ -199,7 +199,12 @@ def test_prompt(api_url):
 
 def test_check_command(api_url):
     ok = subprocess.run(
-        [sys.executable, "-m", "mcp_server", "--check"], env=_env(api_url), cwd=ROOT, capture_output=True, text=True
+        [sys.executable, "-m", "mcp_server", "--check"],
+        env=_env(api_url),
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     assert ok.returncode == 0, ok.stderr
     assert f"mcp {mcp_version()}" in ok.stdout and "всё нужное есть" in ok.stdout
@@ -209,6 +214,7 @@ def test_check_command(api_url):
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert bad.returncode != 0 and "Токен не принят" in bad.stderr
 

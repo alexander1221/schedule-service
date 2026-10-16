@@ -25,6 +25,17 @@ sys.path.insert(0, str(ROOT))
 EXPECTED = {"ortools": "9.15.6755", "django": "6.1.2", "psycopg": "3.3.6", "openpyxl": "3.1.5"}
 PY_MIN, PY_MAX = (3, 12), (3, 14)
 
+
+def _utf8_output() -> None:
+    """Вывод в UTF-8. На Windows, когда вывод уходит в файл или другую программу, Python пишет в кодировке
+    системы (cp1251/cp1252) и падает на кириллице и значках (UnicodeEncodeError). В консоли Windows
+    вывод и так UTF-8 — там ничего не меняется."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower().replace("-", "") != "utf8":
+            stream.reconfigure(encoding="utf-8")
+
+
+_utf8_output()
 _COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 if os.name == "nt" and _COLOR:
     os.system("")  # включает ANSI-последовательности в консоли Windows 10+

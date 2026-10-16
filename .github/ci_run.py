@@ -24,4 +24,5 @@ def main(cmd: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]  # журнал GitHub — UTF-8; иначе cp1252 на Windows
     sys.exit(main(sys.argv[1:]))
