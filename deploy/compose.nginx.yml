@@ -1,0 +1,10 @@
+# Linux server behind nginx HTTPS on :8443. Requires Docker Compose >= 2.24.4.
+# Use together with docker-compose.yml; never start this file on its own.
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:18000:80"
+    environment:
+      SITE_ADDRESS: ":80"
+    volumes:
+      - ./deploy/Caddyfile.nginx:/etc/caddy/Caddyfile:ro

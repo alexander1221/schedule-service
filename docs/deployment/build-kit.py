@@ -98,7 +98,7 @@ def main():
                 "--metadata=title:Сервис расписания",
                 "--metadata=subtitle:Развёртывание и сопровождение",
                 "--metadata=author:Руководство для студентов и сопровождающих",
-                "--metadata=date:Документ 1.1 • 10 ноября 2026 • Приложение 0.14.0",
+                "--metadata=date:Документ 1.2 • 10 ноября 2026 • Приложение 0.14.0",
                 "--pdf-engine=xelatex",
                 "--include-in-header",
                 str(folder / "pdf-header.tex"),

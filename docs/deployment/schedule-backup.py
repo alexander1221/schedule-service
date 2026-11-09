@@ -46,8 +46,6 @@ def create_backup(root, project, destination, include_caddy=False):
         "compose",
         "--project-directory",
         str(root),
-        "-f",
-        str(root / "docker-compose.yml"),
         "-p",
         project,
     ]
@@ -82,6 +80,9 @@ def create_backup(root, project, destination, include_caddy=False):
                 "docker-compose.yml",
                 "Dockerfile",
                 "deploy/Caddyfile",
+                "deploy/Caddyfile.nginx",
+                "deploy/compose.nginx.yml",
+                "deploy/NGINX.md",
                 "deploy/entrypoint.sh",
                 "requirements-lock.txt",
                 "requirements-dev-lock.txt",
