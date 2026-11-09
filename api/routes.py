@@ -27,6 +27,7 @@ from scheduler.validator import Report, validate
 from timetable import models as m
 from timetable.services import views as sv
 from timetable.services.problem import ProblemBuildError, build_problem
+from timetable.services.rebuild import LessonMove, RebuildError, rebuild_variant
 from timetable.services.runs import RunConflict, enqueue, request_cancel
 from timetable.services.variants import ApproveError, approve_variant, default_preset, load_variant
 
@@ -410,6 +411,39 @@ def variant_approve(request: HttpRequest, variant_id: int):  # type: ignore[no-u
         raise HttpError(400, str(e)) from e
     log_change(request, v, "Вариант утверждён")
     return s.VariantOut(**_variant_out(v))
+
+
+@api.post(
+    "/variants/{variant_id}/rebuild",
+    response={201: s.RunOut, 400: s.Error, 409: s.Conflict},
+    summary="Перенести закрепления и поставить пересборку в очередь одной операцией",
+)
+def variant_rebuild(request: HttpRequest, variant_id: int, body: s.RebuildIn):  # type: ignore[no-untyped-def]
+    require(
+        request,
+        "timetable.view_schedulevariant",
+        "timetable.add_pin",
+        "timetable.change_pin",
+        "timetable.delete_pin",
+        "timetable.add_solverun",
+    )
+    variant = _variant(variant_id)
+    moves = [
+        LessonMove(mv.item_id, Week(mv.week), f"{mv.day}-{mv.pair}", f"{mv.to_day}-{mv.to_pair}", mv.to_room_id)
+        for mv in body.moves
+    ]
+    try:
+        with transaction.atomic():
+            run = rebuild_variant(
+                variant, moves, time_limit_s=body.time_limit_s, variants=body.variants, user=request.user
+            )
+            description = "; ".join(f"{mv.item_id}: {mv.source} → {mv.target} ({mv.week.value})" for mv in moves)
+            log_change(request, run, f"Переносы и пересборка: {description}", ADDITION)
+    except RebuildError as e:
+        raise HttpError(400, str(e)) from e
+    except RunConflict as e:
+        return Status(409, s.Conflict(detail=str(e), active_run_id=e.active.pk if e.active else None))
+    return Status(201, _run_out(run))
 
 
 def _violation(v: Any) -> s.Violation:

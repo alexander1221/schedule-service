@@ -732,6 +732,11 @@ class ScheduleVariant(models.Model):
         verbose_name = "вариант расписания"
         verbose_name_plural = "варианты расписания"
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["semester"], condition=models.Q(status="approved"), name="uniq_approved_variant_per_semester"
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.name} ({self.get_status_display()})"

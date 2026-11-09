@@ -1472,6 +1472,7 @@ class ScheduleVariantAdmin(admin.ModelAdmin):
     list_display = ["name", "semester", "status", "total", "solver_status", "wall_time_s", "created_at", "views"]
     list_filter = ["semester", "status"]
     readonly_fields = [
+        "status",
         "semester",
         "solver",
         "solver_status",

@@ -124,12 +124,18 @@ def check_code(email: str, code: str) -> User | None:
     return user
 
 
+@transaction.atomic
 def apply_role(user: User, role: AllowedEmail.Role) -> None:
+    """Заменить управляемую роль, сохранив дополнительные группы и права суперпользователя."""
     group, _ = Group.objects.get_or_create(name=ROLE_GROUP[role])
+    user.groups.remove(*user.groups.filter(name__in=ROLE_GROUP.values()).exclude(pk=group.pk))
     user.groups.add(group)
-    if role in (AllowedEmail.Role.DISPATCHER, AllowedEmail.Role.ADMIN) and not user.is_staff:
-        user.is_staff = True
+    staff = user.is_superuser or role in (AllowedEmail.Role.DISPATCHER, AllowedEmail.Role.ADMIN)
+    if user.is_staff != staff:
+        user.is_staff = staff
         user.save(update_fields=["is_staff"])
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        user.__dict__.pop(attr, None)
 
 
 def link_teacher(user: User) -> None:

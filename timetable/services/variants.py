@@ -120,19 +120,23 @@ class ApproveError(Exception):
     pass
 
 
+@transaction.atomic
 def approve_variant(v: m.ScheduleVariant) -> None:
     """Утвердить вариант: остальные варианты семестра — в черновики. Вариант с жёсткими
     нарушениями (по независимому валидатору) утвердить нельзя."""
-    problem, sched = load_variant(v)
+    # Сериализуем утверждения одного семестра, даже когда пока нет утверждённого варианта.
+    m.Semester.objects.select_for_update().get(pk=v.semester_id)
+    current = m.ScheduleVariant.objects.get(pk=v.pk)
+    problem, sched = load_variant(current)
     rep = validate(problem, sched)
     if not rep.ok:
         raise ApproveError(f"Вариант нельзя утвердить: {len(rep.hard)} жёстких нарушений")
-    with transaction.atomic():
-        m.ScheduleVariant.objects.filter(semester=v.semester, status=m.ScheduleVariant.Status.APPROVED).exclude(
-            pk=v.pk
-        ).update(status=m.ScheduleVariant.Status.DRAFT)
-        v.status = m.ScheduleVariant.Status.APPROVED
-        v.save(update_fields=["status"])
+    m.ScheduleVariant.objects.filter(semester_id=v.semester_id, status=m.ScheduleVariant.Status.APPROVED).exclude(
+        pk=v.pk
+    ).update(status=m.ScheduleVariant.Status.DRAFT)
+    current.status = m.ScheduleVariant.Status.APPROVED
+    current.save(update_fields=["status"])
+    v.status = current.status
 
 
 def run_and_save(

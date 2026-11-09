@@ -192,6 +192,12 @@ class CheckIn(Schema):
     moves: list[Move] = Field(default_factory=list, description="перенести занятия и проверить (вариант не меняется)")
 
 
+class RebuildIn(Schema):
+    moves: list[Move] = Field(min_length=1, description="переносы из исходного варианта")
+    time_limit_s: int = Field(300, ge=10, le=7200)
+    variants: int = Field(1, ge=1, le=10)
+
+
 class CheckOut(Schema):
     ok: bool = Field(description="жёстких нарушений нет")
     hard: list[Violation]

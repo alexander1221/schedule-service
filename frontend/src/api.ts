@@ -58,10 +58,8 @@ export const api = {
   grid: (variantId: number, by: Who, key: string, week: Week) =>
     request<Grid>("GET", `/variants/${variantId}/grid?${q({ by, key, week })}`),
   check: (variantId: number, moves: Move[]) => request<CheckResult>("POST", `/variants/${variantId}/check`, { moves }),
-  createPin: (semId: number, pin: { item_id: number; week: string; day: number; pair: number }) =>
-    request<{ id: number }>("POST", `/semesters/${semId}/pins`, pin),
-  createRun: (semId: number, body: { time_limit_s: number; variants: number; reference_variant_id: number }) =>
-    request<Run>("POST", `/semesters/${semId}/runs`, { ...body, name_prefix: "Перенос" }),
+  rebuild: (variantId: number, body: { moves: Move[]; time_limit_s: number; variants: number }) =>
+    request<Run>("POST", `/variants/${variantId}/rebuild`, body),
   run: (id: number) => request<Run>("GET", `/runs/${id}`),
   cancelRun: (id: number) => request<Run>("POST", `/runs/${id}/cancel`),
   approve: (variantId: number) => request<Variant>("POST", `/variants/${variantId}/approve`),

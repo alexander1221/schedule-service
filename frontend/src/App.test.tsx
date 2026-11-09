@@ -31,7 +31,7 @@ const grid = {
   })),
 };
 
-function mockApi(opts: { me401?: boolean; draft?: boolean } = {}) {
+function mockApi(opts: { me401?: boolean; draft?: boolean; rebuildConflict?: boolean } = {}) {
   const calls: Call[] = [];
   let runPolls = 0;
   const variants = [
@@ -55,6 +55,8 @@ function mockApi(opts: { me401?: boolean; draft?: boolean } = {}) {
             version: "0.11.0",
             permissions: [
               "timetable.add_pin",
+              "timetable.change_pin",
+              "timetable.delete_pin",
               "timetable.add_solverun",
               "timetable.change_schedulevariant",
               "timetable.change_teacheravailability",
@@ -89,9 +91,10 @@ function mockApi(opts: { me401?: boolean; draft?: boolean } = {}) {
         delta: 30,
         breakdown: [],
       });
-    if (p === "/semesters/1/pins") return json(201, { id: 1 });
-    if (p === "/semesters/1/runs")
-      return json(201, { id: 31, semester_id: 1, status: "queued", status_label: "в очереди", progress: {}, message: "", variant_ids: [], reference_variant_id: 7, cancel_requested: false });
+    if (p === "/variants/7/rebuild")
+      return opts.rebuildConflict
+        ? json(409, { detail: "Для этого семестра уже идёт расчёт", active_run_id: 31 })
+        : json(201, { id: 31, semester_id: 1, status: "queued", status_label: "в очереди", progress: {}, message: "", variant_ids: [], reference_variant_id: 7, cancel_requested: false });
     if (p === "/runs/31") {
       runPolls += 1;
       if (runPolls >= 2) variants.push({ id: 8, semester_id: 1, name: "Перенос 1", status: "draft", total: 95, changes: 3, room_changes: 0 } as never);
@@ -174,16 +177,27 @@ test("закрепить и пересобрать → ход расчёта →
   fireEvent.drop(cell("2-2"));
   fireEvent.click(await screen.findByRole("button", { name: "Закрепить и пересобрать" }));
   await screen.findByText("Расчёт №31");
-  expect(calls.find((c) => c.url.endsWith("/pins"))!.body).toEqual({ item_id: 5, week: "both", day: 2, pair: 2 });
-  expect(calls.find((c) => c.url.endsWith("/runs") && c.method === "POST")!.body).toMatchObject({
+  expect(calls.find((c) => c.url.endsWith("/rebuild"))!.body).toEqual({
+    moves: [{ item_id: 5, week: "both", day: 1, pair: 1, to_day: 2, to_pair: 2 }],
     time_limit_s: 300,
     variants: 1,
-    reference_variant_id: 7,
   });
+  expect(calls.some((c) => c.url.endsWith("/pins") || (c.url.endsWith("/runs") && c.method === "POST"))).toBe(false);
   fireEvent.click(await screen.findByRole("button", { name: "что изменилось" }));
   expect((await screen.findByText(/Перенесено занятий/)).textContent).toContain("Перенесено занятий: 2");
   screen.getByText(/стало: Вт 2 пара/);
   expect(calls.some((c) => c.url.includes("/variants/8/diff?against=7"))).toBe(true);
+});
+
+test("конфликт пересборки сохраняет черновик переносов для повторной попытки", async () => {
+  mockApi({ rebuildConflict: true });
+  render(<App />);
+  fireEvent.dragStart(await lesson());
+  fireEvent.drop(cell("2-2"));
+  fireEvent.click(await screen.findByRole("button", { name: "Закрепить и пересобрать" }));
+  await screen.findByText(/Для этого семестра уже идёт расчёт/);
+  expect(within(cell("2-2")).getByText("Математика")).toBeTruthy();
+  expect(within(cell("2-2")).getByRole("button", { name: "вернуть" })).toBeTruthy();
 });
 
 test("без входа — ссылка на вход в админку", async () => {

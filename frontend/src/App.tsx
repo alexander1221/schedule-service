@@ -189,21 +189,10 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
     setBusy(true);
     setError("");
     try {
-      const seen = new Set<string>();
-      for (const m of moves) {
-        const k = `${m.item_id}/${m.week}/${m.to_day}/${m.to_pair}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        try {
-          await api.createPin(semId, { item_id: m.item_id, week: m.week, day: m.to_day, pair: m.to_pair });
-        } catch (e) {
-          if (!(e instanceof ApiError && e.status === 409)) throw e; // уже закреплено так же — не ошибка
-        }
-      }
-      const r = await api.createRun(semId, {
+      const r = await api.rebuild(variantId, {
+        moves,
         time_limit_s: Math.round(minutes * 60),
         variants: nvariants,
-        reference_variant_id: variantId,
       });
       setRun(r);
       setMoves([]);
@@ -365,7 +354,7 @@ export default function App({ pollMs = 3000 }: { pollMs?: number }) {
               check={check}
               checking={checking}
               checkError={checkError}
-              canRebuild={can("add_pin") && can("add_solverun")}
+              canRebuild={can("add_pin") && can("change_pin") && can("delete_pin") && can("add_solverun")}
               busy={busy}
               onReset={() => setMoves([])}
               onRebuild={rebuild}

@@ -17,7 +17,7 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 
@@ -80,7 +80,15 @@ class AllowedEmail(models.Model):
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         self.email = self.email.strip().lower()
-        super().save(*args, **kwargs)
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            # Отзыв прежней роли действует и для уже открытых сессий и API-токенов.
+            from .codes import apply_role
+
+            allowed = type(self).objects.get(pk=self.pk)
+            user = User.objects.select_for_update().filter(email=allowed.email).first()
+            if user is not None:
+                apply_role(user, self.Role(allowed.role))
 
     def __str__(self) -> str:
         return f"{self.email} ({self.get_role_display()})"

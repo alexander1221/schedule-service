@@ -295,6 +295,90 @@ def test_changes_are_logged_with_token_name(api, synthetic):
     assert all(e.user.email == "disp@college.example" for e in LogEntry.objects.all())
 
 
+def _rebuild_move(variant):
+    a = variant.assignments.filter(item__sync_block=None, item__merge_group=None).first()
+    used = set(variant.assignments.filter(item_id=a.item_id).values_list("day", "pair"))
+    day, pair = next(
+        (d, p) for d in variant.semester.days for p in variant.semester.pair_numbers() if (d, p) not in used
+    )
+    return {"item_id": a.item_id, "week": a.week, "day": a.day, "pair": a.pair, "to_day": day, "to_pair": pair}
+
+
+def test_rebuild_api_is_atomic_and_logs_operation(api, variant):
+    from django.contrib.admin.models import LogEntry
+
+    move = _rebuild_move(variant)
+    m.Pin.objects.get_or_create(item_id=move["item_id"], week=move["week"], day=move["day"], pair=move["pair"])
+    r = jpost(api, f"{API}/variants/{variant.pk}/rebuild", {"moves": [move], "time_limit_s": 10})
+    assert r.status_code == 201, r.content
+    assert r.json()["reference_variant_id"] == variant.pk
+    assert m.Pin.objects.filter(
+        item_id=move["item_id"], week=move["week"], day=move["to_day"], pair=move["to_pair"]
+    ).exists()
+    assert not m.Pin.objects.filter(
+        item_id=move["item_id"], week=move["week"], day=move["day"], pair=move["pair"]
+    ).exists()
+    assert "Переносы и пересборка" in LogEntry.objects.latest("pk").change_message
+    before = list(m.Pin.objects.order_by("pk").values())
+    conflict = jpost(api, f"{API}/variants/{variant.pk}/rebuild", {"moves": [move]})
+    assert conflict.status_code == 409 and conflict.json()["active_run_id"] == r.json()["id"]
+    assert list(m.Pin.objects.order_by("pk").values()) == before
+
+
+def test_rebuild_api_rejects_invalid_source_and_missing_permissions(api, variant):
+    move = _rebuild_move(variant)
+    before = list(m.Pin.objects.order_by("pk").values())
+    url = f"{API}/variants/{variant.pk}/rebuild"
+    assert jpost(api, url, {"moves": [{**move, "day": 99}]}).status_code == 400
+    assert jpost(api, url, {"moves": []}).status_code == 422
+    user = User.objects.create_user("no-rebuild@college.example", is_staff=True)
+    _, raw = ApiToken.issue(user, "Без прав")
+    assert jpost(Client(HTTP_AUTHORIZATION=f"Bearer {raw}"), url, {"moves": [move]}).status_code == 403
+    assert list(m.Pin.objects.order_by("pk").values()) == before
+    assert not m.SolveRun.objects.exists()
+
+
+def test_rebuild_api_logging_failure_rolls_back_everything(api, variant, monkeypatch):
+    def fail(*args, **kwargs):
+        raise RuntimeError("Проверка отката журнала")
+
+    monkeypatch.setattr("api.routes.log_change", fail)
+    before = list(m.Pin.objects.order_by("pk").values())
+    with pytest.raises(RuntimeError, match="Проверка отката"):
+        jpost(api, f"{API}/variants/{variant.pk}/rebuild", {"moves": [_rebuild_move(variant)]})
+    assert list(m.Pin.objects.order_by("pk").values()) == before
+    assert not m.SolveRun.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_approval_keeps_one_approved_variant(variant):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from django.db import close_old_connections, connection
+
+    from timetable.services.variants import approve_variant, load_variant
+
+    if connection.vendor != "postgresql":
+        pytest.skip("Проверка блокировок PostgreSQL")
+    p, sched = load_variant(variant)
+    other = save_variant(variant.semester, p, sched, "Второй")
+    ready = Barrier(2)
+
+    def approve(pk):
+        close_old_connections()
+        try:
+            v = m.ScheduleVariant.objects.get(pk=pk)
+            ready.wait(timeout=10)
+            approve_variant(v)
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(approve, [variant.pk, other.pk]))
+    assert variant.semester.variants.filter(status="approved").count() == 1
+
+
 def test_docs_require_staff(dispatcher):
     assert Client().get(f"{API}/docs").status_code == 302  # на вход в админку
     c = Client()
