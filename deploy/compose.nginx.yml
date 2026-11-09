@@ -1,6 +1,24 @@
 # Linux server behind nginx HTTPS on :8443. Requires Docker Compose >= 2.24.4.
 # Use together with docker-compose.yml; never start this file on its own.
 services:
+  web:
+    image: schedule-service:work
+    command:
+      - gunicorn
+      - webapp.wsgi:application
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - "${WEB_WORKERS:-1}"
+      - --timeout
+      - "120"
+      - --access-logfile
+      - "-"
+      - --no-control-socket
+
+  worker:
+    image: schedule-service:work
+
   caddy:
     ports: !override
       - "127.0.0.1:18000:80"
