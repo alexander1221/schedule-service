@@ -1,0 +1,9 @@
+# Stable deployment-kit checksums across Windows and Linux checkouts.
+docs/deployment/*.md text eol=lf
+docs/deployment/*.txt text eol=lf
+docs/deployment/*.py text eol=lf
+docs/deployment/*.tex text eol=lf
+docs/deployment/*.yml text eol=lf
+docs/deployment/Dockerfile.check text eol=lf
+docs/deployment/*.pdf binary
+docs/deployment/*.docx binary

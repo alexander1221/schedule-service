@@ -194,6 +194,7 @@ schedule_service/
 
 ## Дальше
 
+* Полное руководство для студентов: установка, Docker-проверки, копии, восстановление и передача — [docs/deployment/README.md](docs/deployment/README.md).
 * Ответы учебного отдела и что ещё открыто — [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md).
 * Устройство решателя — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 * Воспроизводимость и офлайн-установка — [REPRODUCIBILITY.md](REPRODUCIBILITY.md).

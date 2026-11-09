@@ -1,0 +1,18 @@
+\usepackage{fvextra}
+\usepackage{xurl}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\},breaklines,breakanywhere,fontsize=\scriptsize}
+\fvset{breaklines=true,breakanywhere=true,fontsize=\scriptsize}
+\emergencystretch=3em
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Сервис расписания}
+\fancyhead[R]{\small Руководство 1.0}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{14pt}
+\let\originalmaketitle\maketitle
+\renewcommand{\maketitle}{\originalmaketitle\thispagestyle{empty}\clearpage}
+\let\originaltableofcontents\tableofcontents
+\renewcommand{\tableofcontents}{\originaltableofcontents\clearpage}

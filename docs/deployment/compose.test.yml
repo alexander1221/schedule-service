@@ -1,0 +1,69 @@
+# Separate test stack: no host ports, production env_file or production volumes.
+x-check: &check
+  image: schedule-check-tests:work
+  build:
+    context: ../..
+    dockerfile: docs/deployment/Dockerfile.check
+  volumes:
+    - ../../output:/reports
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: schedule_check
+      POSTGRES_USER: schedule_check
+      POSTGRES_PASSWORD: local_test_only
+    volumes:
+      - check_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U schedule_check -d schedule_check"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  checks-sqlite:
+    <<: *check
+    environment:
+      DB_ENGINE: sqlite
+      DB_NAME: /tmp/check.sqlite3
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: local-test-only-not-for-deployment
+    command:
+      - >-
+        python -m pip check &&
+        python -m ruff check . &&
+        python -m ruff format --check . &&
+        python -m mypy &&
+        python manage.py makemigrations --check --dry-run &&
+        python -m pytest -q --junitxml=/reports/tests-sqlite.xml
+
+  checks-postgres:
+    <<: *check
+    environment:
+      DB_ENGINE: postgres
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: schedule_check
+      DB_USER: schedule_check
+      DB_PASSWORD: local_test_only
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: local-test-only-not-for-deployment
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - python -m pytest -q tests_web --junitxml=/reports/tests-postgres.xml
+
+  ui:
+    image: schedule-check-ui:work
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: frontend
+    entrypoint: ["sh", "-c"]
+    command:
+      - npm run typecheck && npm test && npm run build
+
+volumes:
+  check_pgdata:

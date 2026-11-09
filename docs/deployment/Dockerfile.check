@@ -1,0 +1,6 @@
+# Build the application first: docker build -t schedule-check-app:work .
+ARG APP_IMAGE=schedule-check-app:work
+FROM ${APP_IMAGE}
+USER root
+RUN python -m pip install --require-hashes -r requirements-dev-lock.txt
+ENTRYPOINT ["sh", "-c"]
